@@ -75,6 +75,11 @@ export async function onRequest(context) {
     const metadata = { FileName: fileName, FileType: contentType, FileSizeBytes: data.byteLength, FileSize: (data.byteLength / 1024 / 1024).toFixed(2), Directory: folder ? `${folder}/` : '', Channel: 'CloudflareR2', ChannelName: 'R2_env', TimeStamp: Date.now() };
     await getDatabase(env).put(fullId, '', { metadata });
     waitUntil(endUpload(context, fullId, metadata));
-    const publicUrl = prefix ? `${prefix.replace(/\/+$/, '')}/${fullId}` : `${url.origin}/file/${fullId}`;
-    return createResponse(JSON.stringify([{ src: `/file/${fullId}`, publicUrl }]), { headers: { 'Content-Type': 'application/json' } });
+    const result = { src: `/file/${fullId}` };
+    if (prefix) {
+        result.publicUrl = `${prefix.replace(/\/+$/, '')}/${fullId}`;
+    }
+    return createResponse(JSON.stringify([result]), {
+        headers: { 'Content-Type': 'application/json' },
+    });
 }
