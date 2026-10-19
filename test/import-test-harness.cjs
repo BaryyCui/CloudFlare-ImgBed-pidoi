@@ -26,9 +26,9 @@ async function loadImport(options = {}) {
             const parts = [];
             return {
                 uploadId: 'test-upload', key,
-                async uploadPart(partNumber, value) {
+                async uploadPart(partNumber, value, partOptions = {}) {
                     calls.parts.push(value.byteLength);
-                    if (options.uploadPart) await options.uploadPart(partNumber, value, calls);
+                    if (options.uploadPart) await options.uploadPart(partNumber, value, calls, partOptions);
                     parts[partNumber - 1] = Buffer.from(value);
                     return { partNumber, etag: `etag-${partNumber}` };
                 },
@@ -59,9 +59,9 @@ async function loadImport(options = {}) {
     }
     commands.S3Client = class {
         constructor(config) { this.config = config; }
-        async send(command) {
+        async send(command, sendOptions = {}) {
             calls.s3.push({ config: this.config, command: command.command, input: command.input });
-            if (options.s3Send) return options.s3Send(command, calls);
+            if (options.s3Send) return options.s3Send(command, calls, sendOptions);
             if (command.command === 'CreateMultipartUploadCommand') return { UploadId: 's3-upload' };
             if (command.command === 'UploadPartCommand') return { ETag: 'part-etag' };
             return {};
@@ -105,7 +105,8 @@ async function loadImport(options = {}) {
             body: JSON.stringify({ url: 'https://media.example/file.mp4', ...body }), signal: init.signal,
         }), env, waitUntil: promise => { background.push(promise); promise.catch(() => {}); },
     });
-    return { invoke, env, records, stored, calls, background, onRequest: module.namespace.onRequest };
+    const importLimits = cache.get(path.resolve(__dirname, '../functions/utils/importMedia.js')).namespace.importLimits;
+    return { invoke, env, records, stored, calls, background, importLimits, onRequest: module.namespace.onRequest };
 }
 
 module.exports = { loadImport, media };

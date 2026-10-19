@@ -26,23 +26,40 @@ function isTransient(error) {
 
 export async function abortable(operation, signal, timeoutMS = 30000) {
     if (signal.aborted) throw signal.reason;
+    const attempt = new AbortController();
     let timer;
     let onAbort;
     const stopped = new Promise((_, reject) => {
-        onAbort = () => reject(signal.reason);
+        const stop = reason => { reject(reason); attempt.abort(reason); };
+        onAbort = () => stop(signal.reason);
         signal.addEventListener('abort', onAbort, { once: true });
-        timer = setTimeout(() => reject(new ImportError('stalled', 'Import made no progress before the timeout', 504)), timeoutMS);
+        timer = setTimeout(() => stop(new ImportError('stalled', 'Import made no progress before the timeout', 504)), timeoutMS);
     });
-    try { return await Promise.race([Promise.resolve().then(operation), stopped]); }
+    try {
+        return await Promise.race([Promise.resolve().then(() => {
+            if (attempt.signal.aborted) throw attempt.signal.reason;
+            return operation(attempt.signal);
+        }), stopped]);
+    }
     finally { clearTimeout(timer); signal.removeEventListener('abort', onAbort); }
 }
 
 export async function retryTransient(operation, signal, idleMS, onAttempt = () => {}) {
     for (let attempt = 1; ; attempt++) {
         onAttempt(attempt);
-        try { return await abortable(operation, signal, idleMS); }
+        let pending;
+        try {
+            return await abortable(attemptSignal => {
+                pending = Promise.resolve().then(() => operation(attemptSignal));
+                return pending;
+            }, signal, idleMS);
+        }
         catch (error) {
             if (attempt >= 3 || signal.aborted || !isTransient(error)) throw error;
+            // An abort request alone does not guarantee a socket or writer has
+            // stopped. Never overlap retries if a binding ignores cancellation.
+            try { await abortable(() => pending?.catch(() => {}), signal, idleMS); }
+            catch { throw signal.aborted ? signal.reason : error; }
             await abortable(() => new Promise(resolve => setTimeout(resolve, attempt * 100)), signal, idleMS);
         }
     }
@@ -55,7 +72,7 @@ export async function createImportWriter(env, selected, key, contentType, identi
         pending.then(upload => { if (signal.aborted) upload.abort().catch(() => {}); }).catch(() => {});
         const upload = await abortable(() => pending, signal, idleMS);
         return {
-            part: (number, bytes) => retryTransient(() => upload.uploadPart(number, bytes, { signal }), signal, idleMS, onAttempt),
+            part: (number, bytes) => retryTransient(attemptSignal => upload.uploadPart(number, bytes, { signal: attemptSignal }), signal, idleMS, onAttempt),
             complete(parts, onCommitted = () => {}, waitUntil) {
                 const completion = upload.complete(parts, { signal }).then(async result => { await onCommitted(); return result; });
                 // Only the commit acknowledgement and its short metadata
@@ -91,7 +108,7 @@ export async function createImportWriter(env, selected, key, contentType, identi
     const params = { ...base, UploadId: created.UploadId };
     return {
         async part(number, bytes) {
-            const part = await retryTransient(() => client.send(new UploadPartCommand({ ...params, PartNumber: number, Body: bytes, ContentLength: bytes.byteLength }), { abortSignal: signal }), signal, idleMS, onAttempt);
+            const part = await retryTransient(attemptSignal => client.send(new UploadPartCommand({ ...params, PartNumber: number, Body: bytes, ContentLength: bytes.byteLength }), { abortSignal: attemptSignal }), signal, idleMS, onAttempt);
             return { partNumber: number, etag: part.ETag };
         },
         complete(parts, onCommitted = () => {}, waitUntil) {

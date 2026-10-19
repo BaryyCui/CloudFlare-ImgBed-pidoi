@@ -37,6 +37,7 @@ export async function onRequest(context) {
         if (!input || typeof input.url !== 'string') throw new ImportError('invalid_url', 'url is required');
         source = assertPublicSourceURL(input.url);
         if (input.mediaType !== undefined && !['auto', 'image', 'video', 'audio'].includes(input.mediaType)) throw new ImportError('invalid_media_type', 'mediaType must be auto, image, video or audio');
+        if (input.purpose !== undefined && (input.purpose !== 'video-result' || input.mediaType !== 'video')) throw new ImportError('invalid_purpose', 'video-result purpose requires mediaType video');
         if (input.idempotencyKey !== undefined && (typeof input.idempotencyKey !== 'string' || !input.idempotencyKey.trim() || input.idempotencyKey.length > 256)) throw new ImportError('invalid_idempotency_key', 'idempotencyKey must contain 1 to 256 characters');
         for (const key of ['filename', 'uploadFolder', 'uploadChannel', 'channelName', 'contentType']) {
             if (input[key] !== undefined && typeof input[key] !== 'string') throw new ImportError('invalid_request', 'Import options must be strings');

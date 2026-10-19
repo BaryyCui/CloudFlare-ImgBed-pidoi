@@ -15,10 +15,11 @@ export function importLimits(env, input) {
     const serverMax = Math.min(configuredNumber(env.IMPORT_URL_MAX_BYTES, DEFAULT_MAX_BYTES), 10000 * IMPORT_PART_BYTES);
     const requested = input.maxSizeMB === undefined || Number(input.maxSizeMB) === 0 ? serverMax : Number(input.maxSizeMB) * 1024 * 1024;
     if (!Number.isFinite(requested) || requested <= 0) throw new ImportError('invalid_size', 'maxSizeMB must be a positive number');
+    const videoResult = input.purpose === 'video-result';
     return {
         maxBytes: Math.floor(Math.min(serverMax, requested)),
-        totalMS: configuredNumber(env.IMPORT_URL_TIMEOUT_MS, 5 * 60 * 1000),
-        idleMS: configuredNumber(env.IMPORT_URL_IDLE_TIMEOUT_MS, 30000),
+        totalMS: videoResult ? configuredNumber(env.IMPORT_VIDEO_TIMEOUT_MS, 30 * 60 * 1000) : configuredNumber(env.IMPORT_URL_TIMEOUT_MS, 5 * 60 * 1000),
+        idleMS: videoResult ? configuredNumber(env.IMPORT_VIDEO_IDLE_TIMEOUT_MS, 120000) : configuredNumber(env.IMPORT_URL_IDLE_TIMEOUT_MS, 30000),
     };
 }
 
@@ -68,9 +69,12 @@ async function sourceResponse(context, input, source, signal, limits, onAttempt)
     }
     for (let hop = 0; hop <= 5; hop++) {
         assertPublicSourceURL(current);
-        const response = await retryTransient(async () => {
-            const result = await fetchSource(current, { method: 'GET', headers: allowCredentials ? credentials : new Headers(), redirect: 'manual', signal });
-            if (signal.aborted) { await result.body?.cancel(); throw signal.reason; }
+        const response = await retryTransient(async attemptSignal => {
+            // The attempt deadline ends at response headers; cancellation from
+            // the import must continue to reach the resulting response body.
+            const sourceSignal = AbortSignal.any([signal, attemptSignal]);
+            const result = await fetchSource(current, { method: 'GET', headers: allowCredentials ? credentials : new Headers(), redirect: 'manual', signal: sourceSignal });
+            if (sourceSignal.aborted) { await result.body?.cancel(); throw sourceSignal.reason; }
             if ([408, 429, 500, 502, 503, 504].includes(result.status)) {
                 await result.body?.cancel();
                 throw Object.assign(new ImportError('source_unavailable', 'Source download failed', 502), { status: result.status });
@@ -102,11 +106,13 @@ export async function runMediaImport(context, input, selected, source, prefix, l
     let writer;
     let finished = false;
     let bytesDone = 0;
+    let uploadedBytes = 0;
     let bytesTotal;
     let actualMediaType;
     let attempt = 1;
     let state = 'downloading';
-    const progress = extra => emit({ state, attempt, bytes_done: bytesDone, ...(bytesTotal === undefined ? {} : { bytes_total: bytesTotal }), ...(actualMediaType ? { mediaType: actualMediaType } : {}), ...extra });
+    let phase = 'connecting';
+    const progress = extra => emit({ state, phase, attempt, bytes_done: bytesDone, uploaded_bytes: uploadedBytes, ...(bytesTotal === undefined ? {} : { bytes_total: bytesTotal }), ...(actualMediaType ? { mediaType: actualMediaType } : {}), ...extra });
     const onAttempt = current => { if (current > attempt) { attempt = current; progress(); } };
     const timer = setTimeout(() => controller.abort(new ImportError('timeout', 'Import exceeded the total timeout', 504)), limits.totalMS);
     const heartbeat = setInterval(() => progress(), 5000);
@@ -124,9 +130,11 @@ export async function runMediaImport(context, input, selected, source, prefix, l
                 const previous = JSON.parse(saved);
                 if (previous.bytes > limits.maxBytes) throw new ImportError('size_limit', 'Source file is too large', 413);
                 bytesDone = previous.bytes;
+                uploadedBytes = previous.bytes;
                 bytesTotal = previous.bytes;
                 actualMediaType = previous.mediaType;
                 state = 'completed';
+                phase = 'finalizing';
                 progress(previous.result);
                 return previous.result;
             }
@@ -135,6 +143,7 @@ export async function runMediaImport(context, input, selected, source, prefix, l
         const declaredLength = response.headers.get('content-length');
         if (declaredLength !== null && /^\d+$/.test(declaredLength)) bytesTotal = Number(declaredLength);
         if (bytesTotal > limits.maxBytes) { bytesTotal = undefined; await response.body.cancel(); throw new ImportError('size_limit', 'Source file is too large', 413); }
+        phase = 'downloading'; progress();
         reader = response.body.getReader();
         if (signal.aborted) { await reader.cancel(); throw signal.reason; }
         const declaredType = String(input.contentType || response.headers.get('content-type') || '').split(';')[0].toLowerCase();
@@ -173,18 +182,21 @@ export async function runMediaImport(context, input, selected, source, prefix, l
         const fullId = input.idempotencyKey ? `${folder ? `${folder}/` : ''}import-${requestIdentity}.${extension}` : await buildUniqueFileId(context, fileName, detected.contentType);
         // Deterministic names are owned by this identity. Never accept an
         // arbitrary object key or overwrite unrelated existing metadata.
+        phase = 'creating_upload'; progress();
         const existing = await abortable(() => db.getWithMetadata(fullId), signal, limits.idleMS);
         if (existing?.metadata && Object.keys(existing.metadata).length && existing.metadata.ImportIdentity !== requestIdentity) throw new ImportError('destination_conflict', 'Import destination already exists', 409);
         writer = await createImportWriter(context.env, selected, fullId, detected.contentType, requestIdentity, signal, limits.idleMS, onAttempt);
+        phase = 'downloading'; progress();
         const parts = [];
         let part = new Uint8Array(IMPORT_PART_BYTES);
         let used = 0;
         const flush = async () => {
             if (!used) return;
-            state = 'uploading'; progress();
+            state = 'uploading'; phase = 'uploading'; progress();
             parts.push(await writer.part(parts.length + 1, used === part.length ? part : part.subarray(0, used)));
+            uploadedBytes += used;
             used = 0;
-            state = 'downloading'; progress();
+            state = 'downloading'; phase = 'downloading'; progress();
         };
         const append = async bytes => {
             for (let offset = 0; offset < bytes.length;) {
@@ -204,7 +216,7 @@ export async function runMediaImport(context, input, selected, source, prefix, l
         if (bytesTotal !== undefined && bytesDone !== bytesTotal) throw new ImportError('source_truncated', 'Source download length did not match Content-Length', 502);
         await flush();
         part = null;
-        state = 'uploading'; progress();
+        state = 'uploading'; phase = 'finalizing'; progress();
         const metadata = {
             FileName: fileName, FileType: detected.contentType, FileSizeBytes: bytesDone,
             FileSize: (bytesDone / 1024 / 1024).toFixed(2), Directory: folder ? `${folder}/` : '',
