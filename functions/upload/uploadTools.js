@@ -395,7 +395,7 @@ export async function endUpload(context, fileId, metadata) {
     await purgeCDNCache(env, cdnUrl, url, normalizedFolder);
 
     // 更新文件索引（索引更新时会自动计算容量统计）
-    await addFileToIndex(context, fileId, metadata);
+    return await addFileToIndex(context, fileId, metadata);
 }
 
 // 从 request 中解析 ip 地址

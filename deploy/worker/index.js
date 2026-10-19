@@ -50,6 +50,7 @@ import * as uploadHuggingfaceGetUploadUrl from '../../functions/upload/huggingfa
 import * as apiChannels from '../../functions/api/channels.js';
 import * as apiDirectoryTree from '../../functions/api/directoryTree.js';
 import * as apiFetchRes from '../../functions/api/fetchRes.js';
+import * as apiImportUrl from '../../functions/api/import-url.js';
 import * as apiUserConfig from '../../functions/api/userConfig.js';
 import * as random_index from '../../functions/random/index.js';
 import * as upload_index from '../../functions/upload/index.js';
@@ -101,6 +102,7 @@ const routes = [
     { path: '/api/channels', module: apiChannels, middlewares: [mw_api] },
     { path: '/api/directoryTree', module: apiDirectoryTree, middlewares: [mw_api] },
     { path: '/api/fetchRes', module: apiFetchRes, middlewares: [mw_api] },
+    { path: '/api/import-url', module: apiImportUrl, middlewares: [mw_api] },
     { path: '/api/userConfig', module: apiUserConfig, middlewares: [mw_api] },
     { path: '/random', module: random_index, middlewares: [mw_random] },
     { path: '/upload', module: upload_index, middlewares: [mw_upload] },
