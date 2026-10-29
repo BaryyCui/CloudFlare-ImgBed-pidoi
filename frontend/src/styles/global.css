@@ -1,0 +1,995 @@
+/* 全局主题令牌与跨组件基础样式 */
+
+/* 自定义字体 */
+@font-face {
+    font-family: 'Pacifico';
+    src: url('@/assets/fonts/Pacifico-Regular.woff2') format('woff2');
+    font-display: swap;
+}
+
+/* 基础样式 */
+#app {
+    font-family: Avenir, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-align: center;
+    color: var(--el-text-color-primary);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+}
+
+:focus-visible {
+    outline: none;
+}
+
+/* 禁用移动端点击高亮 */
+* {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+}
+
+:root {
+    /* 浅色主题：中性灰页面、蓝色交互强调、无阴影 */
+    --bg-color: #F5F5F7;
+    /* body 与页面外层容器的统一底色 */
+    --primary-color: #2563EB;
+    /* 项目级主操作色 */
+    --primary-color-accent: #1D4ED8;
+    /* 项目级主操作强调色 */
+    --popper-bg-color: #FFFFFF;
+    /* Element Plus 下拉浮层背景 */
+    --popper-shadow: none;
+    /* Element Plus 下拉浮层阴影 */
+    --image-preview-filter: none;
+    /* 图片预览滤镜 */
+    --text-bg-color: #F2F3F5;
+    /* 安全设置等文本展示块的背景 */
+    --background-image-filter: none;
+    /* 背景图亮度滤镜 */
+
+    /* 上传页：拖拽区、标题与上传列表 */
+    --upload-list-file-icon-color: #2563EB;
+    /* 上传列表文件图标颜色 */
+
+    --el-upload-dragger-bg-color: #FAFAFB;
+    /* 上传拖拽区背景 */
+    --el-upload-dragger-border: 2px dashed #C9CDD4;
+    /* 上传拖拽区边框 */
+    --el-upload-dragger-hover-box-shadow: 0 8px 24px rgba(31, 35, 41, 0.12);
+    /* 上传拖拽区 hover 阴影 */
+    --el-upload-dragger-uniform-color: #2563EB;
+    /* 上传拖拽区图标与强调色 */
+    --upload-card-effect-color: color-mix(in srgb, var(--primary-color) 66%, white);
+    /* 上传卡片 hover 光点与上传流光主色 */
+    --upload-card-effect-highlight-color: color-mix(in srgb, var(--primary-color) 56%, white);
+    /* 上传卡片上传流光高亮色 */
+    --upload-card-hover-glow-bg: radial-gradient(circle, color-mix(in srgb, var(--primary-color) 20%, transparent) 0%, transparent 70%);
+    /* 上传卡片鼠标跟随 hover 光晕 */
+
+    --el-icon--upload-color: #2563EB;
+    /* 上传图标颜色 */
+    --upload-text-color: #4E5969;
+    /* 上传页提示文字颜色 */
+    --upload-header-color: #1D2129;
+    /* 上传页标题颜色 */
+    --upload-main-title-color: #1D2129;
+    /* 上传页主标题颜色 */
+    --upload-title-text-color: #4E5969;
+    /* 上传页标题后缀颜色 */
+    --upload-title-text-shadow: none;
+    /* 上传页标题后缀阴影（none 表示关闭） */
+    --upload-title-hover-glow: transparent;
+    /* 上传页标题 hover 光晕（transparent 表示关闭） */
+    --upload-title-underline-bg: #2563EB;
+    /* 上传页标题 hover 下划线 */
+    --upload-title-underline-shadow: none;
+    /* 上传页标题 hover 下划线阴影（none 表示关闭） */
+    --upload-title-crayon-deep: #1D2129;
+    /* 上传页标题蜡笔深色 */
+    --upload-title-crayon-edge: #C9CDD4;
+    /* 上传页标题蜡笔边缘 */
+    --upload-title-crayon-burr: transparent;
+    /* 上传页标题纹理毛刺（transparent 表示关闭） */
+    --upload-title-crayon-dust: transparent;
+    /* 上传页标题纹理粉尘（transparent 表示关闭） */
+
+    /* 上传页操作按钮组与任务列表工具按钮 */
+    --modern-action-group-bg: #F7F8FA;
+    /* 操作按钮组背景 */
+    --modern-action-group-border: #E5E6EB;
+    /* 操作按钮组边框 */
+    --logo-glow-color: transparent;
+    /* Logo hover 光晕（transparent 表示关闭） */
+    --modern-action-group-hover-bg: #F2F3F5;
+    /* 操作按钮组悬浮背景 */
+    --upload-action-btn-bg: transparent;
+    /* 上传列表顶部工具按钮背景 */
+    --upload-action-btn-color: #4E5969;
+    /* 上传列表顶部工具按钮默认颜色 */
+    --upload-action-btn-shadow: none;
+    /* 上传列表顶部工具按钮阴影 */
+    --upload-action-btn-hover-bg: #F2F3F5;
+    /* 上传列表顶部工具按钮悬浮背景 */
+    --upload-action-btn-hover-shadow: none;
+    /* 上传列表顶部工具按钮悬浮阴影 */
+    --upload-action-btn-active-shadow: none;
+    /* 上传列表顶部工具按钮按下阴影 */
+    --upload-action-copy-color: var(--primary-color);
+    /* 上传列表复制按钮颜色 */
+    --upload-action-retry-color: #16A34A;
+    /* 上传列表重试按钮颜色 */
+    --upload-action-danger-color: #DC2626;
+    /* 上传列表清空按钮颜色 */
+    --upload-action-danger-bg: transparent;
+    /* 上传列表清空按钮背景 */
+    --upload-action-danger-hover-bg: #FEF2F2;
+    /* 上传列表清空按钮悬浮背景 */
+    --upload-action-danger-hover-shadow: none;
+    /* 上传列表清空按钮悬浮阴影 */
+    --file-name-bg: #F7F8FA;
+    /* 文件名背景 */
+    --file-name-border: #E5E6EB;
+    /* 文件名边框 */
+    --file-name-hover-bg: #F2F3F5;
+    /* 文件名悬浮背景 */
+    --file-name-hover-border: #C9CDD4;
+    /* 文件名悬浮边框 */
+    --upload-list-item-border-color: #E5E6EB;
+    /* 上传列表项边框颜色 */
+    --upload-list-item-hover-border: #C9CDD4;
+    /* 上传列表项悬浮边框 */
+    --dashboard-title-bg: transparent;
+    /* 上传任务进度区标题背景 */
+    /* 上传页与异常提示页工具按钮 */
+    --toolbar-button-bg-color: #FFFFFF;
+    /* 工具按钮背景 */
+    --toolbar-button-shadow: none;
+    /* 工具按钮阴影 */
+    --toolbar-button-shadow-hover: none;
+    /* 工具按钮 hover 阴影 */
+    --toolbar-button-color: #4E5969;
+    /* 工具按钮文字颜色 */
+
+    /* 页脚 */
+    --page-footer-text-color: #59636E;
+    /* 页脚文字颜色 */
+    --page-footer-name-color: #1D2129;
+    /* 页脚用户名颜色 */
+
+    /* 登录页 */
+    --password-input-bg-color: #FFFFFF;
+    /* 密码输入框背景 */
+    --login-title-color: #1D2129;
+    /* 登录标题颜色 */
+    --login-container-box-shadow: none;
+    /* 登录容器阴影 */
+    --login-container-hover-box-shadow: none;
+    /* 登录容器悬浮阴影 */
+    --login-title-glow-color: transparent;
+    /* 登录标题光晕（transparent 表示关闭） */
+    --login-input-underline-color: var(--primary-color);
+    /* 登录输入框下划线颜色 */
+    --login-input-label-focus-color: var(--primary-color);
+    /* 登录输入框标签聚焦颜色 */
+
+    /* 弹窗与设置表单 */
+    --dialog-bg-color: #FFFFFF;
+    /* 弹窗背景 */
+    --dialog-surface-bg-color: rgba(255, 255, 255, 0.88);
+    /* Element Plus 弹窗和确认框表面背景 */
+    --dialog-backdrop-blur: 12px;
+    /* Element Plus 弹窗和确认框背景模糊 */
+    --dialog-box-shadow: none;
+    /* 弹窗阴影 */
+    --dialog-section-bg-color: #F2F3F5;
+    /* 弹窗表单区块背景 */
+    --dialog-control-bg-color: #F7F8FA;
+    /* 弹窗设置项与选项卡背景 */
+    --mobile-action-sheet-bg: rgba(255, 255, 255, 0.95);
+    /* 移动端底部操作面板背景 */
+    --mobile-action-sheet-border: rgba(0, 0, 0, 0.05);
+    /* 移动端底部操作面板边框 */
+    --mobile-action-sheet-item-bg: rgba(0, 0, 0, 0.04);
+    /* 移动端底部操作项背景 */
+    --mobile-action-sheet-item-active-bg: rgba(0, 0, 0, 0.08);
+    /* 移动端底部操作项按下背景 */
+
+    /* 管理端顶部页面切换器 */
+    --tabs-dropdown-popper-bg-color: #FFFFFF;
+    /* 页面切换器展开菜单背景 */
+    --tabs-dropdown-popper-shadow: none;
+    /* 页面切换器展开菜单阴影 */
+    --tabs-switcher-hover-bg: color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+    --tabs-switcher-border-color: #E5E6EB;
+    --tabs-switcher-accent-color: var(--primary-color);
+    --tabs-switcher-current-color: var(--primary-color);
+    --tabs-switcher-current-bg: var(--el-color-primary-light-9);
+    --tabs-switcher-current-border-color: var(--primary-color);
+
+    /* 管理端页面与文件管理 */
+    --admin-container-bg-color: #F5F5F7;
+    /* 管理端页面底色 */
+    --admin-container-color: #1D2129;
+    /* 管理端默认文字颜色 */
+    --admin-dashborad-stats-bg-color: #FFFFFF;
+    /* 系统状态统计卡片背景 */
+    --admin-dashboard-btn-color: #4E5969;
+    /* 文件管理分页按钮文字颜色 */
+    --admin-dashboard-btn-bg-color: #FFFFFF;
+    /* 文件管理分页按钮背景 */
+    --admin-dashboard-btn-shadow: none;
+    /* 文件管理分页按钮阴影 */
+    --admin-dashboard-btn-hover-shadow: none;
+    /* 文件管理分页按钮 hover 阴影 */
+    --admin-dashboard-imgcard-bg-color: #FFFFFF;
+    /* 文件管理文件卡片背景 */
+    --admin-dashboard-imgcard-shadow: none;
+    /* 文件管理文件卡片阴影 */
+    --admin-dashboard-tag-suggestion-bg-color: #FFFFFF;
+    /* 文件管理标签建议浮层背景 */
+    --admin-dashboard-tag-suggestion-border-color: #E5E6EB;
+    /* 文件管理标签建议浮层边框 */
+    --admin-dashboard-tag-suggestion-box-shadow: none;
+    /* 文件管理标签建议浮层阴影 */
+    --admin-dashboard-tag-suggestion-item-hover-bg-color: #F7F8FA;
+    /* 文件管理标签建议项 hover 背景 */
+
+    /* 文件管理骨架屏 */
+    --skeleton-bg-color: #E5E6EB;
+    /* 骨架屏基础色 */
+    --skeleton-shimmer-color: #F7F8FA;
+    /* 骨架屏高光颜色 */
+    /* 文件管理批量操作工具栏 */
+    --admin-batch-toolbar-bg: var(--glass-bg);
+    --admin-batch-toolbar-border: var(--glass-border);
+    --admin-batch-toolbar-shadow: var(--glass-shadow);
+    --admin-batch-action-bg: transparent;
+    --admin-batch-action-shadow: none;
+    --admin-batch-action-hover-bg: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    --admin-batch-action-hover-shadow: none;
+    --admin-batch-action-color: var(--el-text-color-regular);
+    --admin-batch-delete-color: var(--el-color-danger);
+    --admin-batch-clear-color: var(--el-text-color-secondary);
+
+    /* 主题切换图标：color 控制描线，bg-color 控制月亮填充 */
+    --theme-toggle-color: #1D2129;
+    /* 主题切换按钮描线颜色 */
+    --theme-toggle-bg-color: #1D2129;
+    /* 月亮图标本体填充色 */
+    --admin-theme-toggle-color: #1D2129;
+    /* 管理端主题切换按钮描线颜色 */
+    --admin-theme-toggle-bg-color: #1D2129;
+    /* 管理端月亮图标本体填充色 */
+
+    /* 404、访问拦截和白名单提示页 */
+    --not-found-title-text-color: #1D2129;
+
+    /* 悬浮保存按钮 */
+    --floating-btn-color: #FFFFFF;
+    --floating-btn-shadow: none;
+    --floating-btn-shadow-hover: none;
+    --floating-btn-right: 32px;
+    --floating-btn-bottom: 32px;
+
+    /* 半透明玻璃表面：卡片、弹窗、顶栏与工具控件共用 */
+    --glass-bg: rgba(255, 255, 255, 0.45);
+    --glass-border: #C9CDD4;
+    --glass-border-hover: #AEB4BE;
+    --glass-shadow: none;
+    --glass-backdrop-blur: 20px;
+    --glass-header-bg: rgba(247, 248, 250, 0.45);
+    --glass-header-border: #C9CDD4;
+
+    /* ===== Element Plus 浅色主题覆盖 ===== */
+    /* 主文字：接近黑色，保证长文本对比度 */
+    --el-text-color-primary: #1D2129;
+    /* 常规文字：表单标签、列表正文等 */
+    --el-text-color-regular: #4E5969;
+    /* 次级文字：说明和辅助信息 */
+    --el-text-color-secondary: #59636E;
+    /* 占位符 */
+    --el-text-color-placeholder: #86909C;
+    /* 禁用文字 */
+    --el-text-color-disabled: #C0C4CC;
+    /* Element Plus 主色：与项目主操作色统一 */
+    --el-color-primary: var(--primary-color);
+    --el-color-primary-rgb: 37, 99, 235;
+    --el-color-primary-light-3: #60A5FA;
+    --el-color-primary-light-5: #93C5FD;
+    --el-color-primary-light-7: #BFDBFE;
+    --el-color-primary-light-8: #DBEAFE;
+    --el-color-primary-light-9: #EFF6FF;
+    --el-color-primary-dark-2: var(--primary-color-accent);
+    /* 边框层级：保证卡片和输入框边界清晰 */
+    --el-border-color: #C9CDD4;
+    --el-border-color-light: #D9DCE2;
+    --el-border-color-lighter: #E5E6EB;
+    --el-border-color-extra-light: #ECEEF1;
+    /* Element Plus 基础圆角 */
+    --el-border-radius-base: 8px;
+    --el-border-radius-small: 6px;
+    /* 填充背景层次 */
+    --el-fill-color: #F2F3F5;
+    --el-fill-color-light: #F7F8FA;
+    --el-fill-color-lighter: #FAFAFB;
+    --el-fill-color-blank: #FFFFFF;
+    --el-bg-color-page: #F5F5F7;
+
+    /* ===== 项目组件通用文字与图标颜色 ===== */
+    --text-color: #1D2129;
+    --text-color-secondary: #59636E;
+    --login-input-icon-color: #86909C;
+    --icon-color: #59636E;
+    --placeholder-color: #86909C;
+}
+
+/* 深色主题 */
+.dark {
+    /* 深色主题：近黑页面、无阴影 */
+    --bg-color: #0F0F0F;
+    /* body 与页面外层容器的统一底色 */
+    --primary-color: #4A5D9B;
+    /* 项目级主操作色 */
+    --primary-color-accent: #6F82C2;
+    /* 项目级主操作强调色 */
+    --popper-bg-color: #161618;
+    /* Element Plus 下拉浮层背景 */
+    --popper-shadow: none;
+    /* Element Plus 下拉浮层阴影 */
+    --image-preview-filter: brightness(0.7);
+    /* 深色主题下压暗文件预览图 */
+    --text-bg-color: #1F1F22;
+    /* 安全设置等文本展示块的背景 */
+    --background-image-filter: brightness(0.7);
+    /* 深色主题下压暗壁纸 */
+
+    /* 上传页：拖拽区、标题与上传列表 */
+    --upload-list-file-icon-color: #60A5FA;
+    /* 上传列表文件图标颜色 */
+
+    --el-upload-dragger-bg-color: #131316;
+    /* 上传拖拽区背景 */
+    --el-upload-dragger-border: 2px dashed #3A3A3F;
+    /* 上传拖拽区边框 */
+    --el-upload-dragger-hover-box-shadow: 0 8px 24px rgba(255, 255, 255, 0.07);
+    /* 上传拖拽区 hover 阴影 */
+    --el-upload-dragger-uniform-color: #60A5FA;
+    /* 上传拖拽区图标与强调色 */
+    --upload-card-effect-color: #C7DBF7;
+    /* 上传卡片 hover 光点与上传流光主色 */
+    --upload-card-effect-highlight-color: #EAF2FF;
+    /* 上传卡片上传流光高亮色 */
+    --upload-card-hover-glow-bg: radial-gradient(circle, rgba(147, 197, 253, 0.16) 0%, rgba(147, 197, 253, 0.1) 24%, rgba(96, 165, 250, 0.055) 44%, transparent 72%);
+    /* 上传卡片鼠标跟随 hover 光晕 */
+
+
+    --el-icon--upload-color: #60A5FA;
+    /* 上传图标颜色 */
+    --upload-text-color: #A1A1AA;
+    /* 上传页提示文字颜色 */
+    --upload-header-color: #FAFAFA;
+    /* 上传页标题颜色 */
+    --upload-main-title-color: #FAFAFA;
+    /* 上传页主标题颜色 */
+    --upload-title-text-color: #A1A1AA;
+    /* 上传页标题后缀颜色 */
+    --upload-title-text-shadow: none;
+    /* 上传页标题后缀阴影（none 表示关闭） */
+    --upload-title-hover-glow: transparent;
+    /* 上传页标题 hover 光晕（transparent 表示关闭） */
+    --upload-title-underline-bg: #60A5FA;
+    /* 上传页标题 hover 下划线 */
+    --upload-title-underline-shadow: none;
+    /* 上传页标题 hover 下划线阴影（none 表示关闭） */
+    --upload-title-crayon-deep: #FAFAFA;
+    /* 上传页标题蜡笔深色 */
+    --upload-title-crayon-edge: #3A3A3F;
+    /* 上传页标题蜡笔边缘 */
+    --upload-title-crayon-burr: transparent;
+    /* 上传页标题纹理毛刺（transparent 表示关闭） */
+    --upload-title-crayon-dust: transparent;
+    /* 上传页标题纹理粉尘（transparent 表示关闭） */
+
+    /* 上传页与异常提示页工具按钮 */
+    --toolbar-button-bg-color: #161618;
+    /* 工具按钮背景 */
+    --toolbar-button-shadow: none;
+    /* 工具按钮阴影 */
+    --toolbar-button-shadow-hover: none;
+    /* 工具按钮 hover 阴影 */
+    --toolbar-button-color: #A1A1AA;
+    /* 工具按钮文字颜色 */
+
+    /* 上传页操作按钮组与任务列表工具按钮 */
+    --modern-action-group-bg: #131316;
+    /* 操作按钮组背景 */
+    --modern-action-group-border: #2A2A2E;
+    /* 操作按钮组边框 */
+    --logo-glow-color: transparent;
+    /* Logo hover 光晕（transparent 表示关闭） */
+    --modern-action-group-hover-bg: #1F1F22;
+    /* 操作按钮组悬浮背景 */
+    --upload-action-btn-bg: transparent;
+    /* 上传列表顶部工具按钮背景 */
+    --upload-action-btn-color: #A1A1AA;
+    /* 上传列表顶部工具按钮默认颜色 */
+    --upload-action-btn-shadow: none;
+    /* 上传列表顶部工具按钮阴影 */
+    --upload-action-btn-hover-bg: #1F1F22;
+    /* 上传列表顶部工具按钮悬浮背景 */
+    --upload-action-btn-hover-shadow: none;
+    /* 上传列表顶部工具按钮悬浮阴影 */
+    --upload-action-btn-active-shadow: none;
+    /* 上传列表顶部工具按钮按下阴影 */
+    --upload-action-copy-color: var(--primary-color-accent);
+    /* 上传列表复制按钮颜色 */
+    --upload-action-retry-color: #4ADE80;
+    /* 上传列表重试按钮颜色 */
+    --upload-action-danger-color: #F87171;
+    /* 上传列表清空按钮颜色 */
+    --upload-action-danger-bg: transparent;
+    /* 上传列表清空按钮背景 */
+    --upload-action-danger-hover-bg: rgba(248, 113, 113, 0.12);
+    /* 上传列表清空按钮悬浮背景 */
+    --upload-action-danger-hover-shadow: none;
+    /* 上传列表清空按钮悬浮阴影 */
+    --file-name-bg: #1F1F22;
+    /* 文件名背景 */
+    --file-name-border: #2A2A2E;
+    /* 文件名边框 */
+    --file-name-hover-bg: #26262A;
+    /* 文件名悬浮背景 */
+    --file-name-hover-border: #3A3A3F;
+    /* 文件名悬浮边框 */
+    --upload-list-item-border-color: #2A2A2E;
+    /* 上传列表项边框颜色 */
+    --upload-list-item-hover-border: #3A3A3F;
+    /* 上传列表项悬浮边框 */
+    --dashboard-title-bg: transparent;
+    /* 上传任务进度区标题背景 */
+
+    /* 页脚 */
+    --page-footer-text-color: #71717A;
+    /* 页脚文字颜色 */
+    --page-footer-name-color: #A1A1AA;
+    /* 页脚用户名颜色 */
+
+    /* 登录页 */
+    --password-input-bg-color: #131316;
+    /* 密码输入框背景 */
+    --login-title-color: #FAFAFA;
+    /* 登录标题颜色 */
+    --login-container-box-shadow: none;
+    /* 登录容器阴影 */
+    --login-container-hover-box-shadow: none;
+    /* 登录容器悬浮阴影 */
+    --login-title-glow-color: transparent;
+    /* 登录标题光晕（transparent 表示关闭） */
+    --login-input-underline-color: var(--primary-color-accent);
+    /* 登录输入框下划线颜色 */
+    --login-input-label-focus-color: var(--primary-color-accent);
+    /* 登录输入框标签聚焦颜色 */
+
+    /* 弹窗与设置表单 */
+    --dialog-bg-color: #161618;
+    /* 弹窗背景 */
+    --dialog-surface-bg-color: rgba(30, 30, 30, 0.5);
+    /* Element Plus 弹窗和确认框表面背景 */
+    --dialog-backdrop-blur: 20px;
+    /* Element Plus 弹窗和确认框背景模糊 */
+    --dialog-box-shadow: none;
+    /* 弹窗阴影 */
+    --dialog-section-bg-color: #1F1F22;
+    /* 弹窗表单区块背景 */
+    --dialog-control-bg-color: #161618;
+    /* 弹窗设置项与选项卡背景 */
+    --mobile-action-sheet-bg: rgba(40, 44, 52, 0.95);
+    /* 移动端底部操作面板背景 */
+    --mobile-action-sheet-border: rgba(255, 255, 255, 0.1);
+    /* 移动端底部操作面板边框 */
+    --mobile-action-sheet-item-bg: rgba(255, 255, 255, 0.08);
+    /* 移动端底部操作项背景 */
+    --mobile-action-sheet-item-active-bg: rgba(255, 255, 255, 0.15);
+    /* 移动端底部操作项按下背景 */
+
+    /* 管理端顶部页面切换器 */
+    --tabs-dropdown-popper-bg-color: #161618;
+    /* 页面切换器展开菜单背景 */
+    --tabs-dropdown-popper-shadow: none;
+    /* 页面切换器展开菜单阴影 */
+    --tabs-switcher-hover-bg: color-mix(in srgb, var(--el-text-color-primary) 14%, transparent);
+    --tabs-switcher-border-color: #2A2A2E;
+    --tabs-switcher-accent-color: var(--primary-color-accent);
+    --tabs-switcher-current-color: var(--primary-color-accent);
+    --tabs-switcher-current-bg: color-mix(in srgb, var(--primary-color) 22%, transparent);
+    --tabs-switcher-current-border-color: var(--primary-color);
+
+    /* 管理端页面与文件管理 */
+    --admin-container-bg-color: #0F0F0F;
+    /* 管理端页面底色 */
+    --admin-container-color: #FAFAFA;
+    /* 管理端默认文字颜色 */
+    --admin-dashborad-stats-bg-color: #161618;
+    /* 系统状态统计卡片背景 */
+    --admin-dashboard-btn-color: #A1A1AA;
+    /* 文件管理分页按钮文字颜色 */
+    --admin-dashboard-btn-bg-color: #161618;
+    /* 文件管理分页按钮背景 */
+    --admin-dashboard-btn-shadow: none;
+    /* 文件管理分页按钮阴影 */
+    --admin-dashboard-btn-hover-shadow: none;
+    /* 文件管理分页按钮 hover 阴影 */
+    --admin-dashboard-imgcard-bg-color: #161618;
+    /* 文件管理文件卡片背景 */
+    --admin-dashboard-imgcard-shadow: none;
+    /* 文件管理文件卡片阴影 */
+    --admin-dashboard-tag-suggestion-bg-color: #161618;
+    /* 文件管理标签建议浮层背景 */
+    --admin-dashboard-tag-suggestion-border-color: #2A2A2E;
+    /* 文件管理标签建议浮层边框 */
+    --admin-dashboard-tag-suggestion-box-shadow: none;
+    /* 文件管理标签建议浮层阴影 */
+    --admin-dashboard-tag-suggestion-item-hover-bg-color: #1F1F22;
+    /* 文件管理标签建议项 hover 背景 */
+
+    /* 文件管理骨架屏 */
+    --skeleton-bg-color: #1F1F22;
+    /* 骨架屏基础色：略亮于文件卡片 */
+    --skeleton-shimmer-color: #26262A;
+    /* 骨架屏高光颜色 */
+    /* 主题切换图标：color 控制描线，bg-color 控制月亮填充 */
+    --theme-toggle-color: #D4D4D8;
+    /* 主题切换按钮描线颜色 */
+    --theme-toggle-bg-color: #E4E4E7;
+    /* 月亮图标本体填充色 */
+    --admin-theme-toggle-color: #D4D4D8;
+    /* 管理端主题切换按钮描线颜色 */
+    --admin-theme-toggle-bg-color: #E4E4E7;
+    /* 管理端月亮图标本体填充色 */
+
+    /* 文件管理批量操作工具栏 */
+    --admin-batch-toolbar-bg: var(--glass-bg);
+    --admin-batch-toolbar-border: var(--glass-border);
+    --admin-batch-toolbar-shadow: var(--glass-shadow);
+    --admin-batch-action-bg: transparent;
+    --admin-batch-action-shadow: none;
+    --admin-batch-action-hover-bg: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    --admin-batch-action-hover-shadow: none;
+    --admin-batch-action-color: var(--el-text-color-regular);
+    --admin-batch-delete-color: var(--el-color-danger);
+    --admin-batch-clear-color: var(--el-text-color-secondary);
+
+    /* 404、访问拦截和白名单提示页 */
+    --not-found-title-text-color: #FAFAFA;
+    /* 异常提示页标题颜色 */
+
+    /* 悬浮保存按钮 */
+    --floating-btn-color: #FFFFFF;
+    --floating-btn-shadow: none;
+    --floating-btn-shadow-hover: none;
+
+    /* 半透明玻璃表面：卡片、弹窗、顶栏与工具控件共用 */
+    --glass-bg: rgba(30, 30, 30, 0.5);
+    --glass-border: #34343A;
+    --glass-border-hover: #4A4A52;
+    --glass-shadow: none;
+    --glass-header-bg: rgba(31, 31, 34, 0.5);
+    --glass-header-border: #34343A;
+
+    /* ===== 项目组件通用文字与图标颜色 ===== */
+    --text-color: #FAFAFA;
+    --text-color-secondary: #A1A1AA;
+    --login-input-icon-color: #71717A;
+    --icon-color: #A1A1AA;
+    --placeholder-color: #6B6B73;
+}
+
+html.dark {
+    /* Element Plus 深色主色与灰阶：与项目低饱和灰蓝视觉统一 */
+    --el-color-primary: var(--primary-color);
+    --el-color-primary-rgb: 74, 93, 155;
+    --el-color-primary-light-3: #53649C;
+    --el-color-primary-light-5: #3F4A72;
+    --el-color-primary-light-7: #303852;
+    --el-color-primary-light-8: #252B3D;
+    --el-color-primary-light-9: #1C2030;
+    --el-color-primary-dark-2: var(--primary-color-accent);
+
+    --el-text-color-primary: #FAFAFA;
+    --el-text-color-regular: #D4D4D8;
+    --el-text-color-secondary: #A1A1AA;
+    --el-text-color-placeholder: #71717A;
+    --el-text-color-disabled: #52525B;
+
+    --el-border-color: #3A3A3F;
+    --el-border-color-light: #34343A;
+    --el-border-color-lighter: #2A2A2E;
+    --el-border-color-extra-light: #242428;
+
+    --el-fill-color: #26262A;
+    --el-fill-color-light: #1F1F22;
+    --el-fill-color-lighter: #18181B;
+    --el-fill-color-blank: #161618;
+
+    --el-bg-color-page: #0F0F0F;
+    --el-bg-color: #161618;
+    --el-bg-color-overlay: #1F1F22;
+}
+
+/* ==============================
+   Element Plus 全局消息提示
+   ============================== */
+.el-message {
+    border-radius: 10px !important;
+    border: 1px solid var(--glass-border) !important;
+    padding: 10px 20px !important;
+    box-shadow: var(--glass-shadow) !important;
+    background-color: var(--glass-bg) !important;
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    min-width: unset !important;
+}
+
+.el-message .el-message__icon {
+    font-size: 18px !important;
+    color: var(--el-text-color-primary) !important;
+}
+
+.el-message .el-message__content {
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    color: var(--el-text-color-primary) !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    letter-spacing: 0.5px;
+}
+
+/* 消息类型图标颜色 */
+.el-message--success .el-message__icon {
+    color: #67c23a !important;
+}
+
+.el-message--warning .el-message__icon {
+    color: #e6a23c !important;
+}
+
+.el-message--error .el-message__icon {
+    color: #f56c6c !important;
+}
+
+/* 消息提示移动端适配 */
+@media (max-width: 768px) {
+    /* 移动端 el-message 样式 */
+    .el-message {
+        padding: 8px 18px !important;
+        border-radius: 10px !important;
+    }
+
+    .el-message .el-message__icon {
+        font-size: 14px !important;
+    }
+
+    .el-message .el-message__content {
+        font-size: 13px !important;
+    }
+}
+
+/* ==============================
+   Element Plus 弹窗和消息框基础外观
+   ============================== */
+.el-dialog,
+.el-message-box {
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: var(--glass-shadow) !important;
+    border: 1px solid var(--glass-border);
+    background-color: var(--dialog-surface-bg-color) !important;
+    backdrop-filter: blur(var(--dialog-backdrop-blur)) saturate(1.2);
+    -webkit-backdrop-filter: blur(var(--dialog-backdrop-blur)) saturate(1.2);
+}
+
+/* 弹窗头部样式 */
+.el-dialog__header,
+.el-message-box__header {
+    border-bottom: none;
+    padding: 16px 20px !important;
+    margin-right: 0 !important;
+    position: relative;
+}
+
+/* Dialog 标题区分隔线 */
+.el-dialog__header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: var(--el-border-color-lighter);
+}
+
+/* MessageBox 标题区分隔线 */
+.el-message-box__header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: var(--el-border-color-lighter);
+}
+
+/* 弹窗内容区域样式 */
+.el-dialog__body,
+.el-message-box__content {
+    padding: 20px !important;
+}
+
+/* 弹窗底部样式 */
+.el-dialog__footer,
+.el-message-box__btns {
+    border-top: none;
+    padding: 12px 20px !important;
+    background-color: transparent;
+}
+
+/* ==============================
+   深色主题弹窗分隔线
+   ============================== */
+/* 深色主题 Dialog 分隔线 */
+.dark .el-dialog__header::after {
+    background: var(--el-border-color-lighter);
+}
+
+/* 深色主题 MessageBox 分隔线 */
+.dark .el-message-box__header::after {
+    background: var(--el-border-color-lighter);
+}
+
+/* 深色主题朴素主按钮使用低亮度背景和高对比度文字 */
+html.dark .el-button--primary.is-plain {
+    --el-button-text-color: var(--el-text-color-primary);
+    --el-button-bg-color: color-mix(in srgb, var(--el-text-color-primary) 4%, transparent);
+    --el-button-border-color: color-mix(in srgb, var(--primary-color-accent) 65%, transparent);
+    --el-button-hover-text-color: var(--el-color-white);
+    --el-button-hover-bg-color: var(--el-color-primary);
+    --el-button-hover-border-color: var(--el-color-primary-light-3);
+    --el-button-active-bg-color: var(--el-color-primary-dark-2);
+    --el-button-active-border-color: var(--el-color-primary-dark-2);
+    color: var(--el-text-color-primary) !important;
+    background-color: color-mix(in srgb, var(--el-text-color-primary) 4%, transparent) !important;
+    border-color: color-mix(in srgb, var(--primary-color-accent) 65%, transparent) !important;
+}
+
+html.dark .el-button--primary.is-plain:hover,
+html.dark .el-button--primary.is-plain:focus {
+    color: var(--el-color-white) !important;
+    background-color: var(--el-color-primary) !important;
+    border-color: var(--el-color-primary-light-3) !important;
+}
+
+.dark .el-pager li.is-active {
+    background-color: var(--el-color-primary);
+    color: var(--el-color-white);
+}
+
+.dark .el-pager li {
+    color: var(--el-text-color-secondary);
+}
+
+.dark .el-pagination .btn-next,
+.dark .el-pagination .btn-prev,
+.dark .el-pagination button {
+    background-color: transparent;
+    color: var(--el-text-color-secondary);
+}
+
+/* 深色主题统一输入焦点、下拉项、开关、标签页、复选框和单选框状态 */
+.dark .el-input__wrapper.is-focus,
+.dark .el-textarea__inner:focus,
+.dark .el-select__wrapper.is-focused {
+    box-shadow: 0 0 0 1px var(--el-color-primary-light-5) inset !important;
+}
+
+.el-select__popper.el-popper {
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background-color: var(--popper-bg-color);
+    box-shadow: var(--popper-shadow);
+}
+
+.el-select__popper .el-select-dropdown__list {
+    box-sizing: border-box;
+    padding: 4px;
+}
+
+.el-select__popper .el-select-dropdown__item {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--el-text-color-regular);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.el-select__popper .el-select-dropdown__item.is-selected {
+    background-color: transparent;
+    color: var(--primary-color-accent);
+}
+
+.el-select__popper .el-select-dropdown__item.is-hovering,
+.el-select__popper .el-select-dropdown__item:hover {
+    background-color: color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+    color: var(--el-text-color-primary);
+}
+
+html.dark .el-select__popper .el-select-dropdown__item.is-selected,
+html.dark .el-cascader__dropdown__item.is-active {
+    background-color: transparent !important;
+    color: var(--primary-color-accent) !important;
+}
+
+html.dark .el-select__popper .el-select-dropdown__item.is-hovering,
+html.dark .el-select__popper .el-select-dropdown__item:hover,
+html.dark .el-cascader__dropdown__item.hover {
+    background-color: color-mix(in srgb, var(--el-text-color-primary) 8%, transparent) !important;
+    color: var(--el-text-color-primary) !important;
+}
+
+.dark .el-tabs__item.is-active {
+    color: var(--el-text-color-primary);
+}
+
+html.dark .el-tabs__item:not(.is-disabled):hover {
+    color: var(--primary-color-accent);
+}
+
+html.dark .el-switch__label.is-active {
+    color: var(--el-text-color-primary);
+}
+
+html.dark .el-switch__label:not(.is-active) {
+    color: var(--el-text-color-secondary);
+}
+
+/* Element Plus 复选框统一使用正圆外形 */
+.el-checkbox__inner {
+    box-sizing: border-box;
+    width: var(--el-checkbox-input-width, 14px);
+    height: var(--el-checkbox-input-height, var(--el-checkbox-input-width, 14px));
+    aspect-ratio: 1 / 1;
+    border-radius: 50% !important;
+}
+
+.el-checkbox__input.is-indeterminate .el-checkbox__inner::before {
+    top: calc(50% - 0.5px) !important;
+    transform: translateY(-50%) scale(0.5);
+}
+
+.dark .el-checkbox__input.is-checked + .el-checkbox__label,
+.dark .el-radio__input.is-checked + .el-radio__label {
+    color: var(--el-text-color-primary) !important;
+}
+
+/* Element Plus 加载遮罩圆角 */
+.el-loading-mask {
+    border-radius: 12px;
+}
+
+/* ==============================
+   Element Plus 下拉菜单
+   ============================== */
+.el-dropdown__popper.el-popper {
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background-color: var(--popper-bg-color);
+    box-shadow: var(--popper-shadow);
+}
+
+html.dark .el-dropdown__popper.el-popper {
+    border-color: var(--glass-border);
+}
+
+.el-dropdown__popper.el-popper .el-dropdown-menu {
+    padding: 4px;
+    border-radius: 7px;
+    background: transparent;
+    border: none;
+}
+
+.el-dropdown__popper.el-popper .el-dropdown-menu__item {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--el-text-color-regular);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.el-dropdown__popper.el-popper .el-dropdown-menu__item:not(.is-disabled):hover,
+.el-dropdown__popper.el-popper .el-dropdown-menu__item:not(.is-disabled):focus {
+    background-color: color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+    color: var(--el-text-color-primary);
+}
+
+html.dark .el-dropdown__popper.el-popper .el-dropdown-menu__item:not(.is-disabled):hover,
+html.dark .el-dropdown__popper.el-popper .el-dropdown-menu__item:not(.is-disabled):focus {
+    background-color: color-mix(in srgb, var(--el-text-color-primary) 8%, transparent);
+    color: var(--el-text-color-primary);
+}
+
+.el-popper.is-light>.el-popper__arrow::before {
+    background: none !important;
+    border: none !important;
+}
+
+/* ==============================
+   OverlayScrollbars 悬浮滚动条
+   类名沿用 os-theme-dark，浅色与深色主题均使用
+   ============================== */
+
+/* 隐藏浏览器原生滚动条，但保持滚动能力 */
+html,
+body,
+* {
+    scrollbar-width: none !important;
+    /* Firefox */
+    -ms-overflow-style: none !important;
+    /* IE/Edge */
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+    display: none !important;
+    /* Chrome/Safari/Opera */
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+}
+
+/* 默认滚动条滑块颜色 */
+.os-theme-dark {
+    --os-handle-bg: rgba(128, 128, 128, 0.5);
+    --os-handle-bg-hover: rgba(128, 128, 128, 0.7);
+    --os-handle-bg-active: rgba(128, 128, 128, 0.85);
+}
+
+/* 深色主题滚动条滑块颜色 */
+html.dark .os-theme-dark,
+.dark .os-theme-dark {
+    --os-handle-bg: rgba(180, 180, 180, 0.6);
+    --os-handle-bg-hover: rgba(180, 180, 180, 0.75);
+    --os-handle-bg-active: rgba(180, 180, 180, 0.9);
+}
+
+/* 滚动条轨道 - 完全透明 */
+.os-theme-dark .os-scrollbar,
+.os-theme-dark .os-scrollbar-horizontal,
+.os-theme-dark .os-scrollbar-vertical {
+    --os-size: 10px;
+    --os-padding-perpendicular: 2px;
+    --os-padding-axis: 2px;
+    --os-track-bg: transparent;
+    --os-track-bg-hover: transparent;
+    --os-track-bg-active: transparent;
+}
+
+/* 滚动条滑块 - macOS 风格胶囊 */
+.os-theme-dark .os-scrollbar .os-scrollbar-handle {
+    border-radius: 10px !important;
+    transition: background-color 0.2s ease, opacity 0.2s ease !important;
+}
+
+/* Element Plus 卡片和下拉浮层统一使用玻璃表面 */
+.el-card,
+.el-dropdown__popper.el-popper {
+    background-color: var(--glass-bg) !important;
+    backdrop-filter: blur(var(--glass-backdrop-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--glass-backdrop-blur)) saturate(1.4);
+}
+

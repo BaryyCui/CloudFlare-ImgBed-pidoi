@@ -4,12 +4,27 @@
  * 对象及分片均先流式写入同目录临时文件，再原子发布。
  */
 
-import { createReadStream, createWriteStream, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, statSync, lstatSync, realpathSync, rmSync } from 'fs';
+import { createReadStream, createWriteStream, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, statSync, lstatSync, realpathSync, readdirSync, rmSync } from 'fs';
 import { rename, rm } from 'fs/promises';
 import { dirname, join, resolve, relative, isAbsolute, sep } from 'path';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { randomUUID, createHash } from 'crypto';
+
+// A second adapter for the same bucket must see writes already in progress.
+const activeObjectWrites = new Map();
+const identityFields = ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'];
+
+function retentionDeleteReason(object, expectedIdentity) {
+    if (!object.safe) return 'unsafe';
+    if (object.active) return 'active';
+    if (!object.exists) return 'missing';
+    if (!expectedIdentity || identityFields.some((field) =>
+        !Number.isFinite(expectedIdentity[field]) || expectedIdentity[field] !== object.identity[field])) {
+        return 'changed';
+    }
+    return null;
+}
 
 function readableValue(value) {
     if (value instanceof Blob) return Readable.fromWeb(value.stream());
@@ -109,7 +124,91 @@ export class LocalR2Storage {
 
     /** options.signal 可取消写入；失败时保留之前的完整对象。 */
     async put(key, value, options = {}) {
-        await this._writeAtomic(this._filePath(key), value, options);
+        await this._withObjectWrite(key, (filePath) => this._writeAtomic(filePath, value, options));
+    }
+
+    async _withObjectWrite(key, action) {
+        const filePath = this._filePath(key);
+        activeObjectWrites.set(filePath, (activeObjectWrites.get(filePath) || 0) + 1);
+        try {
+            return await action(filePath);
+        } finally {
+            const remaining = activeObjectWrites.get(filePath) - 1;
+            if (remaining) activeObjectWrites.set(filePath, remaining);
+            else activeObjectWrites.delete(filePath);
+        }
+    }
+
+    _hasMultipartUpload(key) {
+        const root = join(this.basePath, '_multipart');
+        try {
+            this._assertSafePath(root);
+            for (const entry of readdirSync(root, { withFileTypes: true })) {
+                // Unknown session state is not evidence that an object is idle.
+                if (entry.isSymbolicLink()) return true;
+                if (!entry.isDirectory()) continue;
+                const keyPath = join(root, entry.name, '_key');
+                try {
+                    this._assertSafePath(keyPath);
+                    if (!lstatSync(keyPath).isFile()) return true;
+                    if (readFileSync(keyPath, 'utf8') === key) return true;
+                } catch (error) {
+                    if (error.code !== 'ENOENT') return true;
+                }
+            }
+            return false;
+        } catch (error) {
+            return error.code !== 'ENOENT';
+        }
+    }
+
+    /** Retention only inspects regular published objects, without following links. */
+    inspectForRetention(key) {
+        const object = { exists: false, safe: false, active: false, identity: null, size: 0, mtimeMs: null };
+        let filePath;
+        try {
+            filePath = this._filePath(key);
+            if (key.split('/').some((segment) => /^\.r2-.*\.tmp$/.test(segment))) return object;
+        } catch {
+            return object;
+        }
+        object.active = activeObjectWrites.has(filePath) || this._hasMultipartUpload(key);
+        try {
+            const stat = lstatSync(filePath);
+            object.exists = true;
+            if (!stat.isFile()) return object;
+            object.safe = true;
+            object.identity = Object.fromEntries(identityFields.map((field) => [field, stat[field]]));
+            object.size = stat.size;
+            object.mtimeMs = stat.mtimeMs;
+        } catch (error) {
+            if (error.code === 'ENOENT') object.safe = true;
+        }
+        return object;
+    }
+
+    /** No await may separate version/activity checks, the database guard and unlink. */
+    deleteForRetention(key, expectedIdentity, beforeDelete) {
+        let reason = retentionDeleteReason(this.inspectForRetention(key), expectedIdentity);
+        if (reason) return { deleted: false, reason };
+        if (beforeDelete) {
+            const result = beforeDelete();
+            if (result && typeof result.then === 'function') {
+                // Avoid an unhandled rejection from a mistakenly asynchronous guard.
+                Promise.resolve(result).catch(() => {});
+                throw new TypeError('Retention beforeDelete guard must be synchronous');
+            }
+            if (result === false) throw new Error('Retention beforeDelete guard rejected deletion');
+            reason = retentionDeleteReason(this.inspectForRetention(key), expectedIdentity);
+            if (reason) return { deleted: false, reason };
+        }
+        try {
+            unlinkSync(this._filePath(key));
+        } catch (error) {
+            if (error.code === 'ENOENT') return { deleted: false, reason: 'missing' };
+            throw error;
+        }
+        return { deleted: true, reason: 'deleted' };
     }
 
     async delete(key) {
@@ -223,13 +322,13 @@ export class LocalR2Storage {
                         }
                     }
                 }
-                return self._withUploadOperation(uploadId, options.signal, async (signal) => {
-                    await self._writeAtomic(self._filePath(key), Readable.from(readParts()), {
+                return self._withObjectWrite(key, (filePath) => self._withUploadOperation(uploadId, options.signal, async (signal) => {
+                    await self._writeAtomic(filePath, Readable.from(readParts()), {
                         signal,
                         beforeCommit: () => self._validateUpload(key, uploadId),
                     });
                     self._cleanupDir(uploadDir);
-                });
+                }));
             },
 
             async abort() {

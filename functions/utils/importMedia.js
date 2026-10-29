@@ -126,7 +126,7 @@ export async function runMediaImport(context, input, selected, source, prefix, l
         const recordKey = `manage@import@${requestIdentity}`;
         if (input.idempotencyKey) {
             const saved = await abortable(() => db.get(recordKey), signal, limits.idleMS);
-            if (saved) {
+            if (saved && (!context.env.RETENTION_SERVICE || await context.env.RETENTION_SERVICE.validateImportReplay(requestIdentity, JSON.parse(saved)))) {
                 const previous = JSON.parse(saved);
                 if (previous.bytes > limits.maxBytes) throw new ImportError('size_limit', 'Source file is too large', 413);
                 bytesDone = previous.bytes;

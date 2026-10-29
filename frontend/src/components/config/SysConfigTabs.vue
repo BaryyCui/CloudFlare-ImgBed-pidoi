@@ -1,0 +1,247 @@
+<template>
+<div class="sidebar-container" ref="sidebar" :class="{ 'is-collapsed': isCollapse }" :style="sidebarStyle">
+    <div class="menu-list">
+        <div 
+            v-for="item in menuItems" 
+            :key="item.index"
+            class="menu-item"
+            :class="{ 'is-active': activeIndex === item.index }"
+            @click="handleSelect(item.index)"
+        >
+            <font-awesome-icon :icon="item.icon" class="menu-icon" />
+            <span class="menu-text">{{ $t(item.titleKey) }}</span>
+        </div>
+    </div>
+
+    <div class="toggle-button" @click="toggleCollapse">
+        <font-awesome-icon :icon="isCollapse ? 'angle-double-right' : 'angle-double-left'"></font-awesome-icon>
+    </div>
+</div>
+</template>
+
+<script>
+export default {
+name: 'SysConfigTabs',
+props: {
+    activeIndex: {
+        type: String,
+        default: 'status'
+    },
+    isCollapse: {
+        type: Boolean,
+        default: false
+    }
+},
+data() {
+    return {
+        expandedWidth: null,
+        menuItems: [
+            { index: 'status', icon: 'chart-bar', titleKey: 'sysConfigTabs.systemStatus' },
+            { index: 'upload', icon: 'cloud-upload', titleKey: 'sysConfigTabs.uploadSettings' },
+            { index: 'security', icon: 'shield', titleKey: 'sysConfigTabs.securitySettings' },
+            { index: 'page', icon: 'pager', titleKey: 'sysConfigTabs.pageSettings' },
+            { index: 'retention', icon: 'clock', titleKey: 'sysConfigTabs.retentionSettings' },
+            { index: 'others', icon: 'cog', titleKey: 'sysConfigTabs.otherSettings' }
+        ]
+    };
+},
+computed: {
+    collapsedWidth() {
+        return window.innerWidth <= 768 ? 50 : 56;
+    },
+    sidebarStyle() {
+        if (this.isCollapse) {
+            return { width: this.collapsedWidth + 'px' };
+        }
+        return this.expandedWidth ? { width: this.expandedWidth + 'px' } : {};
+    }
+},
+watch: {
+    '$i18n.locale'() {
+        this.$nextTick(() => this.measureWidth());
+    }
+},
+methods: {
+    toggleCollapse() {
+        this.$emit('update:isCollapse', !this.isCollapse);
+    },
+    checkMobile() {
+        const isMobile = window.innerWidth <= 768;
+        this.$emit('update:isCollapse', isMobile);
+    },
+    handleSelect(index) {
+        this.$emit('update:activeIndex', index);
+    },
+    measureWidth() {
+        const el = this.$refs.sidebar;
+        if (!el) return;
+        // Temporarily expand to measure natural content width
+        const prevWidth = el.style.width;
+        const prevTransition = el.style.transition;
+        const wasCollapsed = el.classList.contains('is-collapsed');
+        el.style.transition = 'none';
+        if (wasCollapsed) {
+            el.classList.remove('is-collapsed');
+        }
+        el.style.width = 'auto';
+        // Force reflow to apply changes
+        void el.offsetWidth;
+        const natural = el.scrollWidth;
+        // Restore original state
+        el.style.width = prevWidth;
+        if (wasCollapsed) {
+            el.classList.add('is-collapsed');
+        }
+        void el.offsetWidth;
+        el.style.transition = prevTransition;
+        this.expandedWidth = natural;
+    },
+},
+mounted() {
+    this.checkMobile();
+    this.$nextTick(() => this.measureWidth());
+    window.addEventListener('resize', this.checkMobile);
+},
+beforeDestroy() {
+    window.removeEventListener('resize', this.checkMobile);
+}
+};
+</script>
+
+<style scoped>
+.sidebar-container {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 50%;
+    left: 8px;
+    transform: translateY(-50%);
+    z-index: 2001;
+    max-width: 200px;
+    /* macOS 风格毛玻璃效果 */
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: none;
+    transition: width 0.3s ease, box-shadow 0.3s ease;
+    overflow: hidden;
+}
+
+.sidebar-container.is-collapsed {
+    width: 56px;
+}
+
+/* 深色模式 */
+html.dark .sidebar-container {
+    background: var(--glass-bg);
+    box-shadow: none;
+}
+
+.sidebar-container:hover {
+    box-shadow: none;
+}
+
+html.dark .sidebar-container:hover {
+    box-shadow: none;
+}
+
+.menu-list {
+    padding: 8px;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 12px 12px 12px 0;
+    height: 42px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    color: var(--admin-container-color, #333);
+    gap: 0;
+    overflow: hidden;
+}
+
+.menu-item:hover {
+    background: color-mix(in srgb, var(--el-text-color-primary) 6%, transparent);
+}
+
+html.dark .menu-item:hover {
+    background: color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+}
+
+.menu-item.is-active {
+    background: color-mix(in srgb, var(--primary-color) 20%, transparent);
+    color: var(--primary-color);
+}
+
+html.dark .menu-item.is-active {
+    background: color-mix(in srgb, var(--primary-color) 30%, transparent);
+    color: var(--el-text-color-primary);
+}
+
+.menu-icon {
+    width: 40px;
+    min-width: 40px;
+    font-size: 16px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.menu-text {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    opacity: 1;
+    transition: opacity 0.2s ease 0.05s, max-width 0.25s ease;
+}
+
+.sidebar-container.is-collapsed .menu-text {
+    opacity: 0;
+    max-width: 0;
+    transition: opacity 0.1s ease, max-width 0.2s ease;
+}
+
+.toggle-button {
+    padding: 12px;
+    text-align: center;
+    cursor: pointer;
+    border-top: 1px solid color-mix(in srgb, var(--el-text-color-primary) 8%, transparent);
+    transition: all 0.2s ease;
+    color: var(--admin-container-color, #333);
+}
+
+html.dark .toggle-button {
+    border-top: 1px solid color-mix(in srgb, var(--el-text-color-primary) 8%, transparent);
+}
+
+.toggle-button:hover {
+    background: color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+}
+
+html.dark .toggle-button:hover {
+    background: color-mix(in srgb, var(--el-text-color-primary) 6%, transparent);
+}
+
+/* 移动端 */
+@media (max-width: 768px) {
+    .sidebar-container {
+        left: 4px;
+        max-width: 170px;
+    }
+    
+    .sidebar-container.is-collapsed {
+        width: 50px;
+    }
+    
+    .menu-icon {
+        width: 34px;
+        min-width: 34px;
+    }
+}
+</style>

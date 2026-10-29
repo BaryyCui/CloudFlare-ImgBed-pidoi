@@ -1257,6 +1257,24 @@ export async function getIndexMeta(context) {
     const db = getDatabase(env);
 
     try {
+        if (env.RETENTION_SERVICE?.hasDeletionBarriers?.()) {
+            const index = await loadChunkedIndex(context);
+            if (index.success) {
+                const channelStats = {};
+                let totalSizeMB = 0;
+                for (const file of index.files) {
+                    const size = parseFloat(file.metadata?.FileSize) || 0;
+                    const name = file.metadata?.ChannelName;
+                    totalSizeMB += size;
+                    if (name) {
+                        channelStats[name] ||= { usedMB: 0, fileCount: 0 };
+                        channelStats[name].usedMB += size;
+                        channelStats[name].fileCount++;
+                    }
+                }
+                return { success: true, totalCount: index.files.length, totalSizeMB: Math.round(totalSizeMB * 100) / 100, channelStats, lastUpdated: index.lastUpdated };
+            }
+        }
         const metadataStr = await db.get(INDEX_META_KEY);
         if (!metadataStr) {
             return {
@@ -1890,7 +1908,7 @@ async function saveChunkedIndex(context, index) {
     const chunkSize = getIndexChunkSize(env);
     
     try {
-        const files = index.files || [];
+        const files = env.RETENTION_SERVICE ? await env.RETENTION_SERVICE.filterIndexFiles(index.files || []) : index.files || [];
         const chunks = [];
         
         // 将文件数组分块
@@ -1921,7 +1939,7 @@ async function saveChunkedIndex(context, index) {
         // 保存索引元数据（包含容量统计）
         const metadata = {
             lastUpdated: index.lastUpdated,
-            totalCount: index.totalCount,
+            totalCount: files.length,
             totalSizeMB: Math.round(totalSizeMB * 100) / 100,
             channelStats,
             lastOperationId: index.lastOperationId,
@@ -1990,10 +2008,11 @@ async function loadChunkedIndex(context) {
             }
         });
         
+        const visibleFiles = env.RETENTION_SERVICE ? await env.RETENTION_SERVICE.filterIndexFiles(files) : files;
         const index = {
-            files,
+            files: visibleFiles,
             lastUpdated: metadata.lastUpdated,
-            totalCount: metadata.totalCount,
+            totalCount: env.RETENTION_SERVICE ? visibleFiles.length : metadata.totalCount,
             lastOperationId: metadata.lastOperationId,
             success: true
         };

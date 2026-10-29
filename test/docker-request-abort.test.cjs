@@ -26,6 +26,7 @@ describe('Docker request signal after real-IP header injection', function () {
         const aborted = deferred();
         const release = deferred();
         const listening = deferred();
+        const retention = { started: false, closed: false, async start() { this.started = true; }, async close() { this.closed = true; } };
         let server;
         let client;
         // Run the real entry point and Hono router. Replace only unrelated
@@ -33,15 +34,15 @@ describe('Docker request signal after real-IP header injection', function () {
         // directory or real SQLite database is accessed by this fixture.
         const context = vm.createContext({
             URL, Headers, Request, Response, ReadableStream, AbortController,
-            console, process: { env: { PORT: '0' } }, fetch: globalThis.fetch,
+            console, process: { env: { PORT: '0' }, once() {} }, fetch: globalThis.fetch,
         });
         const synthetic = (name, exports) => new vm.SyntheticModule(Object.keys(exports), function () {
             for (const [key, value] of Object.entries(exports)) this.setExport(key, value);
         }, { context, identifier: name });
         const fixture = synthetic('disconnect-handler', {
-            onRequest: async ({ request }) => {
+            onRequest: async ({ request, env }) => {
                 request.signal.addEventListener('abort', () => aborted.resolve(true), { once: true });
-                received.resolve(request);
+                received.resolve({ request, env });
                 await release.promise;
                 return new Response('finished');
             },
@@ -77,6 +78,7 @@ describe('Docker request signal after real-IP header injection', function () {
             if (specifier === './r2Storage.js') return synthetic(specifier, { LocalR2Storage: class {} });
             if (specifier === './imageProcessor.js') return synthetic(specifier, { dockerImageProcessor: {} });
             if (specifier === './importSource.js') return synthetic(specifier, { createNodeImportFetcher: () => () => {} });
+            if (specifier === './retention/index.js') return synthetic(specifier, { createRetentionService: () => retention });
             throw new Error(`Unexpected fixture import: ${specifier}`);
         });
         try {
@@ -85,7 +87,9 @@ describe('Docker request signal after real-IP header injection', function () {
             client = http.request({ hostname: '127.0.0.1', port: server.address().port, path: '/api/disconnect-fixture', method: 'POST' });
             client.on('error', () => {});
             client.end('{}');
-            const forwarded = await received.promise;
+            const { request: forwarded, env } = await received.promise;
+            assert.equal(env.RETENTION_SERVICE, retention);
+            assert.equal(retention.started, true);
             assert.equal(forwarded.headers.get('x-real-ip'), '127.0.0.1');
             client.destroy();
             const outcome = await Promise.race([aborted.promise, new Promise(resolve => setTimeout(() => resolve(false), 200))]);
@@ -96,6 +100,7 @@ describe('Docker request signal after real-IP header injection', function () {
             client?.destroy();
             server?.closeAllConnections();
             if (server) await new Promise(resolve => server.close(resolve));
+            assert.equal(retention.closed, true);
         }
     });
 });

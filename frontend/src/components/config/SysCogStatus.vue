@@ -1,0 +1,2583 @@
+<template>
+  <div class="status-panel" v-loading="loading">
+    <!-- 动态问候与系统运行摘要 -->
+    <section
+      class="status-hero"
+      :class="`is-${systemHealthState}`"
+      :aria-label="$t('sysStatus.systemOverview')"
+    >
+      <div class="status-hero-copy">
+        <div class="status-hero-kicker">
+          <span class="system-health-badge" aria-live="polite">
+            <span class="system-health-dot" aria-hidden="true"></span>
+            {{ systemHealthLabel }}
+          </span>
+          <span class="status-hero-date">{{ currentDateLabel }}</span>
+        </div>
+
+        <h1 class="status-hero-title">{{ greetingTitle }}</h1>
+        <p class="status-hero-summary" aria-live="polite">{{ systemStatusSummary }}</p>
+      </div>
+
+      <div class="status-hero-time-card">
+        <span class="status-hero-time-caption">{{ $t('sysStatus.localTime') }}</span>
+        <time class="status-hero-time" :datetime="currentTime.toISOString()">{{ currentTimeLabel }}</time>
+        <span class="status-hero-timezone">{{ timeZoneLabel }}</span>
+      </div>
+    </section>
+
+    <!-- 顶部概览卡片 -->
+    <div class="overview-cards">
+      <div class="overview-card total-files" @click="fetchIndexInfo">
+        <div class="card-icon">
+          <font-awesome-icon icon="database" />
+        </div>
+        <div class="card-content">
+          <div class="card-title">{{ $t('sysStatus.totalFiles') }}</div>
+          <div class="card-value">{{ indexInfo.totalFiles?.toLocaleString() || '0' }}</div>
+          <div class="card-subtitle">{{ $t('sysStatus.clickToRefresh') }}</div>
+        </div>
+      </div>
+
+      <div class="overview-card index-status">
+        <div class="card-icon">
+          <font-awesome-icon icon="clock" />
+        </div>
+        <div class="card-content">
+          <div class="card-title">{{ $t('sysStatus.indexUpdateTime') }}</div>
+          <div class="card-value">{{ formatTime(indexInfo.lastUpdated) }}</div>
+          <div class="card-subtitle">{{ getTimeAgo(indexInfo.lastUpdated) }}</div>
+        </div>
+      </div>
+
+      <div class="overview-card system-version" @click="openReleases">
+        <div class="card-icon">
+          <font-awesome-icon icon="code-branch" />
+        </div>
+        <div class="card-content">
+          <div class="card-title">{{ $t('sysStatus.systemVersion') }}</div>
+          <div class="card-value">v{{ version }}</div>
+          <div class="card-subtitle">{{ $t('sysStatus.clickToViewChangelog') }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 统计图表区域 -->
+    <div class="charts-section">
+      <!-- 上传趋势 - 折线图 -->
+      <div class="chart-card trend-chart-card">
+        <div class="chart-header trend-chart-header">
+          <div class="chart-title">
+            <font-awesome-icon icon="chart-line" />
+            <span>{{ $t('sysStatus.uploadTrend') }}</span>
+            <el-button
+              class="trend-calendar-btn"
+              circle
+              :aria-label="$t('sysStatus.selectDateRange')"
+              @click="openTrendDateDialog"
+            >
+              <font-awesome-icon icon="calendar" />
+            </el-button>
+          </div>
+          <div class="trend-controls">
+            <el-radio-group
+              v-model="trendGroupBy"
+              size="small"
+              class="trend-group-switch"
+              :aria-label="$t('sysStatus.uploadTrendGroupBy')"
+            >
+              <el-radio-button label="channel">{{ $t('sysStatus.byChannelType') }}</el-radio-button>
+              <el-radio-button label="channelName">{{ $t('sysStatus.byChannelName') }}</el-radio-button>
+            </el-radio-group>
+          </div>
+        </div>
+        <el-dialog
+          v-model="trendDatePickerVisible"
+          :title="$t('sysStatus.selectDateRange')"
+          :width="trendDateDialogWidth"
+          class="trend-date-dialog"
+          align-center
+          append-to-body
+        >
+          <div class="trend-date-panel">
+            <DateRangeCalendar
+              v-model="trendDateRange"
+              @change="handleTrendDateRangeChange"
+            />
+          </div>
+        </el-dialog>
+        <div class="chart-content trend-chart-content">
+          <div v-if="!hasTrendData" class="empty-state trend-empty-state">
+            <font-awesome-icon icon="inbox" />
+            <span>{{ $t('sysStatus.noData') }}</span>
+          </div>
+          <div v-else class="line-chart-wrapper">
+            <Line :data="uploadTrendChartData" :options="lineChartOptions" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 渠道统计 - 饼状图 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <font-awesome-icon icon="share-alt" />
+          <span>{{ $t('sysStatus.channelDistribution') }}</span>
+        </div>
+        <div class="chart-content">
+          <div v-if="Object.keys(indexInfo.channelStats || {}).length === 0" class="empty-state">
+            <font-awesome-icon icon="inbox" />
+            <span>{{ $t('sysStatus.noData') }}</span>
+          </div>
+          <div v-else class="pie-chart-container">
+            <div class="pie-chart-wrapper">
+              <Doughnut :data="channelChartData" :options="chartOptions" />
+              <div class="chart-center-text">
+                <div class="center-value">{{ indexInfo.totalFiles?.toLocaleString() || '0' }}</div>
+                <div class="center-label">{{ $t('sysStatus.totalFilesLabel') }}</div>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <div 
+                v-for="(count, channel, index) in indexInfo.channelStats" 
+                :key="channel"
+                class="legend-item"
+              >
+                <span class="legend-color" :style="{ background: getChartColor(index) }"></span>
+                <span class="legend-label">{{ channel }}</span>
+                <span class="legend-value">{{ count.toLocaleString() }}</span>
+                <span class="legend-percent">{{ getPercentage(count, indexInfo.totalFiles) }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 文件类型统计 - 饼状图 -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <font-awesome-icon icon="file-alt" />
+          <span>{{ $t('sysStatus.fileStatusDistribution') }}</span>
+        </div>
+        <div class="chart-content">
+          <div v-if="Object.keys(indexInfo.typeStats || {}).length === 0" class="empty-state">
+            <font-awesome-icon icon="inbox" />
+            <span>{{ $t('sysStatus.noData') }}</span>
+          </div>
+          <div v-else class="pie-chart-container">
+            <div class="pie-chart-wrapper">
+              <Doughnut :data="typeChartData" :options="chartOptions" />
+              <div class="chart-center-text">
+                <div class="center-value">{{ Object.keys(indexInfo.typeStats).length }}</div>
+                <div class="center-label">{{ $t('sysStatus.statusTypes') }}</div>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <div 
+                v-for="(count, status, index) in aggregatedTypeStats" 
+                :key="status"
+                class="legend-item"
+              >
+                <span class="legend-color" :style="{ background: getTypeChartColor(index) }"></span>
+                <span class="legend-label">{{ status }}</span>
+                <span class="legend-value">{{ count.toLocaleString() }}</span>
+                <span class="legend-percent">{{ getPercentage(count, indexInfo.totalFiles) }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 操作区域 -->
+    <div class="actions-section">
+      <div class="action-card">
+        <div class="action-header">
+          <font-awesome-icon icon="tools" />
+          <span>{{ $t('sysStatus.systemMaintenance') }}</span>
+        </div>
+        <div class="action-content">
+          <!-- 进度显示 UI -->
+          <div v-if="isProcessing" class="progress-container">
+            <div class="progress-header">
+              <span class="progress-phase">{{ phaseDescription }}</span>
+              <span class="progress-percentage">{{ Math.round(processingProgress.percentage) }}%</span>
+            </div>
+            <el-progress 
+              :percentage="processingProgress.percentage" 
+              :stroke-width="12"
+              :show-text="false"
+              class="progress-bar"
+            />
+            <div class="progress-details">
+              <!-- 当前/总数显示 -->
+              <span class="progress-count" v-if="processingProgress.current > 0">
+                <font-awesome-icon icon="file-alt" />
+                {{ processingProgress.current.toLocaleString() }}
+                <template v-if="processingProgress.total > 0">
+                  / {{ processingProgress.total.toLocaleString() }}
+                </template>
+                {{ $t('sysStatus.records') }}
+              </span>
+              <!-- 预计剩余时间 -->
+              <span class="progress-time" v-if="estimatedTimeRemaining">
+                <font-awesome-icon icon="clock" />
+                {{ estimatedTimeRemaining }}
+              </span>
+            </div>
+            <div class="progress-message" v-if="processingProgress.message">
+              {{ processingProgress.message }}
+            </div>
+            <!-- 取消按钮 -->
+            <el-button 
+              type="danger" 
+              plain
+              size="small"
+              @click="cancelOperation"
+              class="cancel-btn"
+            >
+              <font-awesome-icon icon="times" />
+              {{ $t('sysStatus.cancelOperation') }}
+            </el-button>
+          </div>
+          
+          <!-- 错误显示 -->
+          <div v-else-if="processingError" class="error-container">
+            <div class="error-icon">
+              <font-awesome-icon icon="exclamation-triangle" />
+            </div>
+            <div class="error-content">
+              <div class="error-message">{{ processingError.message }}</div>
+              <div class="error-suggestion" v-if="processingError.suggestion">
+                {{ processingError.suggestion }}
+              </div>
+            </div>
+            <div class="error-actions">
+              <el-button 
+                v-if="processingError.recoverable"
+                type="primary" 
+                size="small"
+                @click="retryOperation"
+              >
+                <font-awesome-icon icon="redo" />
+                {{ $t('sysStatus.retry') }}
+              </el-button>
+              <el-button 
+                type="default" 
+                size="small"
+                @click="dismissError"
+              >
+                {{ $t('sysStatus.close') }}
+              </el-button>
+            </div>
+          </div>
+          
+          <!-- 操作按钮 -->
+          <div v-else class="action-buttons">
+            <el-tooltip :content="$t('sysStatus.rebuildTooltip')" placement="top">
+              <el-button 
+                type="primary" 
+                :loading="rebuilding"
+                :disabled="isProcessing"
+                @click="rebuildIndex"
+                class="action-btn rebuild-btn"
+              >
+                <font-awesome-icon icon="sync-alt" />
+                {{ rebuilding ? $t('sysStatus.rebuilding') : $t('sysStatus.rebuildIndex') }}
+              </el-button>
+            </el-tooltip>
+
+            <el-tooltip :content="$t('sysStatus.backupTooltip')" placement="top">
+              <el-button 
+                type="success" 
+                :loading="backing"
+                :disabled="isProcessing"
+                @click="backupData"
+                class="action-btn backup-btn"
+              >
+                <font-awesome-icon icon="download" />
+                {{ backing ? $t('sysStatus.backingUp') : $t('sysStatus.backupData') }}
+              </el-button>
+            </el-tooltip>
+
+            <el-tooltip :content="$t('sysStatus.restoreTooltip')" placement="top">
+              <div class="restore-section">
+                <input 
+                  type="file" 
+                  ref="fileInput" 
+                  accept=".json"
+                  @change="handleFileSelect"
+                  style="display: none"
+                />
+                <el-button 
+                  type="warning" 
+                  :loading="restoring"
+                  :disabled="isProcessing"
+                  @click="selectRestoreFile"
+                  class="action-btn restore-btn"
+                >
+                  <font-awesome-icon icon="upload" />
+                  {{ restoring ? $t('sysStatus.restoring') : $t('sysStatus.restoreData') }}
+                </el-button>
+              </div>
+            </el-tooltip>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 最新/最旧文件信息 -->
+    <div class="file-info-section" v-if="indexInfo.newestFile || indexInfo.oldestFile">
+      <!-- 最新上传 -->
+      <div class="file-info-card info-card-newest" v-if="indexInfo.newestFile" @click="openFileInNewTab(indexInfo.newestFile)">
+        <!-- 图片/视频背景 -->
+        <el-image 
+          v-if="isImageFile(indexInfo.newestFile) && !loadErrors['newest']"
+          :src="'/file/' + indexInfo.newestFile.id + '?from=admin'"
+          fit="cover"
+          class="card-bg-media"
+          @error="handleImageError('newest')"
+        ></el-image>
+        <video 
+          v-else-if="isVideoFile(indexInfo.newestFile) && !loadErrors['newest']"
+          :src="'/file/' + indexInfo.newestFile.id + '?from=admin'"
+          class="card-bg-media"
+          muted
+          loop
+          autoplay
+          @error="handleImageError('newest')"
+        ></video>
+        <div v-else class="card-bg-fallback">
+           <font-awesome-icon icon="file-alt" class="fallback-icon" />
+        </div>
+        
+        <!-- 顶部标题浮层 -->
+        <div class="file-card-header">
+          <font-awesome-icon icon="arrow-up" />
+          <span>{{ $t('sysStatus.latestUpload') }}</span>
+        </div>
+        
+        <!-- 底部信息浮层 -->
+        <div class="info-card-footer">
+          <div class="file-name">
+            {{ indexInfo.newestFile.metadata?.FileName || indexInfo.newestFile.id }}
+          </div>
+          <div class="file-meta">{{ formatTime(indexInfo.newestFile.metadata?.TimeStamp) }}</div>
+        </div>
+      </div>
+
+      <!-- 最早上传 -->
+      <div class="file-info-card info-card-oldest" v-if="indexInfo.oldestFile" @click="openFileInNewTab(indexInfo.oldestFile)">
+        <!-- 图片/视频背景 -->
+        <el-image 
+          v-if="isImageFile(indexInfo.oldestFile) && !loadErrors['oldest']"
+          :src="'/file/' + indexInfo.oldestFile.id + '?from=admin'"
+          fit="cover"
+          class="card-bg-media"
+          @error="handleImageError('oldest')"
+        ></el-image>
+        <video 
+          v-else-if="isVideoFile(indexInfo.oldestFile) && !loadErrors['oldest']"
+          :src="'/file/' + indexInfo.oldestFile.id + '?from=admin'"
+          class="card-bg-media"
+          muted
+          loop
+          autoplay
+          @error="handleImageError('oldest')"
+        ></video>
+        <div v-else class="card-bg-fallback">
+           <font-awesome-icon icon="file-alt" class="fallback-icon" />
+        </div>
+
+        <!-- 顶部标题浮层 -->
+        <div class="file-card-header warning">
+          <font-awesome-icon icon="arrow-down" />
+          <span>{{ $t('sysStatus.earliestUpload') }}</span>
+        </div>
+
+        <!-- 底部信息浮层 -->
+        <div class="info-card-footer">
+          <div class="file-name">
+            {{ indexInfo.oldestFile.metadata?.FileName || indexInfo.oldestFile.id }}
+          </div>
+          <div class="file-meta">{{ formatTime(indexInfo.oldestFile.metadata?.TimeStamp) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import fetchWithAuth from '@/utils/fetchWithAuth'
+import packageInfo from '../../../package.json'
+import { Doughnut, Line } from 'vue-chartjs'
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler } from 'chart.js'
+import IndexRebuilder from '@/utils/indexRebuilder'
+import BackupGenerator from '@/utils/backupGenerator'
+import RestoreProcessor from '@/utils/restoreProcessor'
+import DateRangeCalendar from '@/components/DateRangeCalendar.vue'
+
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler)
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function padDatePart(value) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDateInput(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
+}
+
+function getDefaultTrendDateRange() {
+  const endDate = new Date()
+  endDate.setHours(0, 0, 0, 0)
+  const startDate = new Date(endDate.getTime() - 6 * DAY_MS)
+  return [formatDateInput(startDate), formatDateInput(endDate)]
+}
+
+export default {
+  name: 'SysCogStatus',
+  components: {
+    Doughnut,
+    Line,
+    DateRangeCalendar
+  },
+  data() {
+    return {
+      loading: false,
+      rebuilding: false,
+      backing: false,
+      restoring: false,
+      indexInfo: {},
+      indexInfoLoaded: false,
+      indexInfoError: false,
+      currentTime: new Date(),
+      clockTimer: null,
+      version: packageInfo.version, // 从package.json获取版本号
+      loadErrors: {
+        newest: false,
+        oldest: false
+      },
+      trendGroupBy: 'channel',
+      trendDatePickerVisible: false,
+      trendDateRange: getDefaultTrendDateRange(),
+      // 渠道图表颜色
+      channelColors: [
+        '#8B5CF6', '#EC4899', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#2563EB', '#84CC16'
+      ],
+      // 状态图表颜色
+      typeColors: [
+        '#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'
+      ],
+      // 上传趋势折线图颜色
+      trendColors: [
+        '#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16', '#64748B'
+      ],
+      // 批量操作进度状态
+      isProcessing: false,
+      processingPhase: '', // fetching, sorting, uploading, finalizing, building, downloading, completed
+      processingProgress: {
+        current: 0,
+        total: 0,
+        message: '',
+        percentage: 0
+      },
+      processingError: null,
+      processingStartTime: null,
+      // 当前处理器实例（用于取消操作）
+      currentRebuilder: null,
+      currentBackupGenerator: null,
+      currentRestoreProcessor: null
+    }
+  },
+  computed: {
+    currentLocale() {
+      return String(this.$i18n.locale || 'zh-CN')
+    },
+    indexedFileCount() {
+      return Number(this.indexInfo.totalFiles || 0)
+    },
+    uploadChannelCount() {
+      return Object.keys(this.indexInfo.channelStats || {}).length
+    },
+    systemHealthState() {
+      if (this.indexInfoError) return 'attention'
+      if (!this.indexInfoLoaded) return 'checking'
+      return 'healthy'
+    },
+    systemHealthLabel() {
+      return this.$t(`sysStatus.health${this.systemHealthState.charAt(0).toUpperCase()}${this.systemHealthState.slice(1)}`)
+    },
+    greetingTitle() {
+      const hour = this.currentTime.getHours()
+      if (hour < 5) return this.$t('sysStatus.greetingLateNight')
+      if (hour < 11) return this.$t('sysStatus.greetingMorning')
+      if (hour < 14) return this.$t('sysStatus.greetingNoon')
+      if (hour < 18) return this.$t('sysStatus.greetingAfternoon')
+      if (hour < 23) return this.$t('sysStatus.greetingEvening')
+      return this.$t('sysStatus.greetingLateNight')
+    },
+    systemStatusSummary() {
+      if (this.indexInfoError) return this.$t('sysStatus.summaryUnavailable')
+      if (!this.indexInfoLoaded) return this.$t('sysStatus.summaryChecking')
+      if (this.indexedFileCount === 0) return this.$t('sysStatus.summaryEmpty')
+      if (this.uploadChannelCount === 0) {
+        return this.$t('sysStatus.summaryIndexed', {
+          files: this.indexedFileCount.toLocaleString(this.currentLocale)
+        })
+      }
+      return this.$t('sysStatus.summaryHealthy', {
+        files: this.indexedFileCount.toLocaleString(this.currentLocale),
+        channels: this.uploadChannelCount.toLocaleString(this.currentLocale)
+      })
+    },
+    currentDateLabel() {
+      return new Intl.DateTimeFormat(this.currentLocale, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long'
+      }).format(this.currentTime)
+    },
+    currentTimeLabel() {
+      return new Intl.DateTimeFormat(this.currentLocale, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(this.currentTime)
+    },
+    timeZoneLabel() {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || this.$t('sysStatus.localTimezone')
+      const offsetMinutes = -this.currentTime.getTimezoneOffset()
+      const sign = offsetMinutes >= 0 ? '+' : '-'
+      const absoluteMinutes = Math.abs(offsetMinutes)
+      const hours = Math.floor(absoluteMinutes / 60)
+      const minutes = absoluteMinutes % 60
+      const offset = minutes === 0 ? `UTC${sign}${hours}` : `UTC${sign}${hours}:${String(minutes).padStart(2, '0')}`
+      return `${timeZone} · ${offset}`
+    },
+    // 渠道分布图表数据
+    channelChartData() {
+      const stats = this.indexInfo.channelStats || {}
+      return {
+        labels: Object.keys(stats),
+        datasets: [{
+          data: Object.values(stats),
+          backgroundColor: this.channelColors.slice(0, Object.keys(stats).length),
+          borderWidth: 0
+        }]
+      }
+    },
+    // 文件状态图表数据 - 将Block映射为"已屏蔽"，其余为"正常"
+    typeChartData() {
+      const aggregatedStats = this.aggregatedTypeStats
+      return {
+        labels: Object.keys(aggregatedStats),
+        datasets: [{
+          data: Object.values(aggregatedStats),
+          backgroundColor: this.typeColors.slice(0, Object.keys(aggregatedStats).length),
+          borderWidth: 0
+        }]
+      }
+    },
+    // 聚合后的状态统计：Block -> 已屏蔽，其余 -> 正常
+    aggregatedTypeStats() {
+      const stats = this.indexInfo.typeStats || {}
+      const aggregatedStats = {}
+      for (const [status, count] of Object.entries(stats)) {
+        const mappedStatus = status === 'Block' ? this.$t('sysStatus.blocked') : this.$t('sysStatus.normalStatus')
+        aggregatedStats[mappedStatus] = (aggregatedStats[mappedStatus] || 0) + count
+      }
+      return aggregatedStats
+    },
+    // 当前趋势维度数据
+    currentTrendGroup() {
+      const trend = this.indexInfo.uploadTrend || {}
+      const groupBy = trend.groupBy || {}
+      return groupBy[this.trendGroupBy] || { series: [] }
+    },
+    // 趋势图原始日期标签
+    trendRawLabels() {
+      const trend = this.indexInfo.uploadTrend || {}
+      return trend.labels || []
+    },
+    // 当前范围是否跨年
+    trendRangeCrossesYear() {
+      const years = new Set()
+      this.trendRawLabels.forEach(label => {
+        this.extractTrendLabelDates(label).forEach(date => years.add(date.year))
+      })
+      return years.size > 1
+    },
+    // 用于横轴展示的短日期标签
+    trendDisplayLabels() {
+      return this.trendRawLabels.map(label => this.formatTrendAxisLabel(label))
+    },
+    // 是否存在趋势图数据
+    hasTrendData() {
+      const trend = this.indexInfo.uploadTrend || {}
+      return (trend.labels || []).length > 0
+    },
+    // 日期选择弹窗宽度保持与项目内其他弹窗一致
+    trendDateDialogWidth() {
+      return window.innerWidth > 768 ? '420px' : '90%'
+    },
+    // 上传趋势折线图数据
+    uploadTrendChartData() {
+      const trend = this.indexInfo.uploadTrend || {}
+      const series = this.currentTrendGroup.series || []
+      const totalColor = '#F97316'
+      return {
+        labels: this.trendDisplayLabels,
+        datasets: [
+          {
+            label: this.$t('sysStatus.totalUploads'),
+            data: trend.total || [],
+            borderColor: totalColor,
+            backgroundColor: this.hexToRgba(totalColor, 0.1),
+            pointBackgroundColor: totalColor,
+            pointBorderColor: totalColor,
+            borderWidth: 3,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            tension: 0.28,
+            fill: false
+          },
+          ...series.map((item, index) => {
+            const color = this.getTrendColor(index)
+            return {
+              label: this.formatTrendSeriesName(item),
+              data: item.data || [],
+              borderColor: color,
+              backgroundColor: this.hexToRgba(color, 0.12),
+              pointBackgroundColor: color,
+              pointBorderColor: color,
+              borderWidth: 2,
+              pointRadius: 2,
+              pointHoverRadius: 5,
+              tension: 0.32,
+              fill: false
+            }
+          })
+        ]
+      }
+    },
+    // 折线图配置
+    lineChartOptions() {
+      const textColor = '#64748B'
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              usePointStyle: true,
+              boxWidth: 8,
+              boxHeight: 8,
+              padding: 16,
+              color: textColor
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: '#fff',
+            bodyColor: '#fff',
+            padding: 12,
+            cornerRadius: 8,
+            displayColors: true,
+            callbacks: {
+              title: (items) => {
+                const index = items?.[0]?.dataIndex
+                return this.trendRawLabels[index] || ''
+              },
+              label: (context) => {
+                const parsed = context.parsed || {}
+                const value = parsed.y !== undefined ? parsed.y : context.raw
+                return ` ${context.dataset.label}: ${Number(value || 0).toLocaleString()} ${this.$t('sysStatus.uploadsUnit')}`
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: textColor,
+              maxTicksLimit: 8,
+              autoSkip: true
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(148, 163, 184, 0.18)'
+            },
+            ticks: {
+              color: textColor,
+              precision: 0,
+              callback: (value) => Number(value).toLocaleString()
+            }
+          }
+        }
+      }
+    },
+    // 图表配置
+    chartOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: '65%',
+        hoverOffset: 8,
+        layout: {
+          padding: 10
+        },
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: '#fff',
+            bodyColor: '#fff',
+            padding: 12,
+            cornerRadius: 8,
+            displayColors: true,
+            z: 100,
+            callbacks: {
+              label: (context) => {
+                const value = context.raw
+                const total = context.dataset.data.reduce((a, b) => a + b, 0)
+                const percentage = ((value / total) * 100).toFixed(1)
+                return ` ${value.toLocaleString()} (${percentage}%)`
+              }
+            }
+          }
+        },
+        animation: {
+          animateRotate: true,
+          animateScale: true
+        }
+      }
+    },
+    // 预计剩余时间
+    estimatedTimeRemaining() {
+      if (!this.isProcessing || !this.processingStartTime) return ''
+      if (this.processingProgress.current === 0 || this.processingProgress.percentage === 0) return ''
+      
+      const elapsed = Date.now() - this.processingStartTime
+      const progress = this.processingProgress.percentage / 100
+      if (progress <= 0) return ''
+      
+      const totalEstimated = elapsed / progress
+      const remaining = totalEstimated - elapsed
+      
+      if (remaining <= 0) return this.$t('sysStatus.aboutToComplete')
+      
+      const seconds = Math.ceil(remaining / 1000)
+      if (seconds < 60) return this.$t('sysStatus.seconds', { count: seconds })
+      const minutes = Math.ceil(seconds / 60)
+      if (minutes < 60) return this.$t('sysStatus.minutes', { count: minutes })
+      const hours = Math.floor(minutes / 60)
+      const remainingMinutes = minutes % 60
+      return this.$t('sysStatus.hoursMinutes', { hours, minutes: remainingMinutes })
+    },
+    // 处理阶段描述
+    phaseDescription() {
+      const phaseMap = {
+        'fetching': this.$t('sysStatus.phaseFetching'),
+        'sorting': this.$t('sysStatus.phaseSorting'),
+        'uploading': this.$t('sysStatus.phaseUploading'),
+        'finalizing': this.$t('sysStatus.phaseFinalizing'),
+        'building': this.$t('sysStatus.phaseBuilding'),
+        'downloading': this.$t('sysStatus.phaseDownloading'),
+        'restoring_files': this.$t('sysStatus.phaseRestoringFiles'),
+        'restoring_settings': this.$t('sysStatus.phaseRestoringSettings'),
+        'completed': this.$t('sysStatus.phaseCompleted'),
+        'retrying': this.$t('sysStatus.phaseRetrying')
+      }
+      return phaseMap[this.processingPhase] || this.processingPhase
+    }
+  },
+  mounted() {
+    this.fetchIndexInfo()
+    this.clockTimer = window.setInterval(() => {
+      this.currentTime = new Date()
+    }, 1000)
+  },
+  beforeUnmount() {
+    if (this.clockTimer) {
+      window.clearInterval(this.clockTimer)
+      this.clockTimer = null
+    }
+  },
+  methods: {
+    // 获取渠道图表颜色
+    getChartColor(index) {
+      return this.channelColors[index % this.channelColors.length]
+    },
+    // 获取状态图表颜色
+    getTypeChartColor(index) {
+      return this.typeColors[index % this.typeColors.length]
+    },
+    // 获取趋势图表颜色
+    getTrendColor(index) {
+      return this.trendColors[index % this.trendColors.length]
+    },
+    // 格式化趋势序列名称
+    formatTrendSeriesName(series) {
+      if (series?.isOther || series?.name === '__other__') {
+        return this.$t('sysStatus.otherChannels')
+      }
+      return series?.name || this.$t('sysStatus.unknown')
+    },
+    // 十六进制颜色转换为 rgba
+    hexToRgba(hex, alpha) {
+      const normalized = (hex || '').replace('#', '')
+      if (normalized.length !== 6) {
+        return `rgba(37, 99, 235, ${alpha})`
+      }
+      const r = parseInt(normalized.slice(0, 2), 16)
+      const g = parseInt(normalized.slice(2, 4), 16)
+      const b = parseInt(normalized.slice(4, 6), 16)
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    },
+    // 提取趋势标签中的日期
+    extractTrendLabelDates(label) {
+      const matches = String(label || '').match(/\d{4}-\d{2}-\d{2}/g) || []
+      return matches.map(item => {
+        const [year, month, day] = item.split('-').map(Number)
+        return { year, month, day }
+      })
+    },
+    // 横轴日期标签按范围简化，仅跨年时显示年份
+    formatTrendAxisLabel(label) {
+      const dates = this.extractTrendLabelDates(label)
+      if (dates.length === 0) return label
+
+      const formatSingleDate = (date, includeYear) => {
+        const monthDay = `${date.month}/${date.day}`
+        return includeYear ? `${date.year}/${monthDay}` : monthDay
+      }
+
+      if (dates.length === 1) {
+        return formatSingleDate(dates[0], this.trendRangeCrossesYear)
+      }
+
+      const [startDate, endDate] = dates
+      if (!this.trendRangeCrossesYear) {
+        return `${formatSingleDate(startDate, false)}-${formatSingleDate(endDate, false)}`
+      }
+
+      const endLabel = startDate.year === endDate.year
+        ? formatSingleDate(endDate, false)
+        : formatSingleDate(endDate, true)
+      return `${formatSingleDate(startDate, true)}-${endLabel}`
+    },
+    // 打开居中的日期范围选择弹窗
+    openTrendDateDialog() {
+      this.trendDatePickerVisible = true
+    },
+    // 日期范围变更后重新拉取趋势数据
+    handleTrendDateRangeChange(value) {
+      if (!Array.isArray(value) || value.length !== 2 || !value[0] || !value[1]) {
+        return
+      }
+
+      this.trendDatePickerVisible = false
+      this.fetchIndexInfo()
+    },
+    // 获取趋势查询参数
+    getTrendDateRangeParams() {
+      if (!Array.isArray(this.trendDateRange) || this.trendDateRange.length !== 2) {
+        this.trendDateRange = getDefaultTrendDateRange()
+      }
+      return {
+        startDate: this.trendDateRange[0],
+        endDate: this.trendDateRange[1]
+      }
+    },
+    // 获取索引信息
+    async fetchIndexInfo() {
+      this.loading = true
+      this.indexInfoError = false
+      try {
+        const { startDate, endDate } = this.getTrendDateRangeParams()
+        const params = new URLSearchParams({
+          action: 'info',
+          timezoneOffset: String(new Date().getTimezoneOffset()),
+          trendMaxPoints: '90',
+          trendSeriesLimit: '8',
+          trendStartDate: startDate,
+          trendEndDate: endDate
+        })
+        const response = await fetchWithAuth(`/api/manage/list?${params.toString()}`, {
+          method: 'GET'
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          this.indexInfo = data
+          this.indexInfoLoaded = true
+        } else {
+          throw new Error('API请求失败')
+        }
+      } catch (error) {
+        console.error('获取索引信息失败:', error)
+        this.indexInfoError = true
+        this.$message.error(this.$t('sysStatus.fetchIndexFailed'))
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // 重建索引 - 使用前端辅助重建流程
+    async rebuildIndex() {
+      if (this.isProcessing) {
+        this.$message.warning(this.$t('sysStatus.operationInProgress'))
+        return
+      }
+      
+      this.rebuilding = true
+      this.isProcessing = true
+      this.processingError = null
+      this.processingStartTime = Date.now()
+      this.processingProgress = { current: 0, total: 0, message: '', percentage: 0 }
+      
+      // 创建 IndexRebuilder 实例
+      this.currentRebuilder = new IndexRebuilder({
+        onProgress: (progress) => this.handleProgress(progress),
+        onError: (error) => this.handleError(error)
+      })
+      
+      try {
+        const result = await this.currentRebuilder.rebuild()
+        
+        // 成功完成
+        this.$message.success(this.$t('sysStatus.rebuildSuccess', { count: result.totalFiles.toLocaleString() }))
+        
+        // 刷新索引信息
+        setTimeout(() => {
+          this.fetchIndexInfo()
+        }, 1000)
+      } catch (error) {
+        // 错误处理
+        if (error.code !== 'ABORTED') {
+          const errorMessage = error.suggestion 
+            ? `${error.message}。${error.suggestion}`
+            : error.message
+          this.$message.error(errorMessage)
+          this.processingError = {
+            message: error.message,
+            suggestion: error.suggestion,
+            recoverable: error.recoverable
+          }
+        }
+      } finally {
+        this.rebuilding = false
+        this.isProcessing = false
+        this.currentRebuilder = null
+        this.processingStartTime = null
+      }
+    },
+
+    // 备份数据 - 使用前端辅助备份流程
+    async backupData() {
+      if (this.isProcessing) {
+        this.$message.warning(this.$t('sysStatus.operationInProgress'))
+        return
+      }
+      
+      this.backing = true
+      this.isProcessing = true
+      this.processingError = null
+      this.processingStartTime = Date.now()
+      this.processingProgress = { current: 0, total: 0, message: '', percentage: 0 }
+      
+      // 创建 BackupGenerator 实例
+      this.currentBackupGenerator = new BackupGenerator({
+        onProgress: (progress) => this.handleProgress(progress)
+      })
+      
+      try {
+        const result = await this.currentBackupGenerator.generateBackup()
+        
+        // 成功完成
+        const settingsMsg = result.settingsCount > 0 ? this.$t('sysStatus.backupSuccessWithSettings', { fileCount: result.fileCount.toLocaleString(), settingsCount: result.settingsCount }) : this.$t('sysStatus.backupSuccess', { count: result.fileCount.toLocaleString() })
+        this.$message.success(settingsMsg)
+      } catch (error) {
+        // 错误处理
+        if (error.code !== 'ABORTED') {
+          const errorMessage = error.suggestion 
+            ? `${error.message}。${error.suggestion}`
+            : error.message
+          this.$message.error(errorMessage)
+          this.processingError = {
+            message: error.message,
+            suggestion: error.suggestion,
+            recoverable: error.recoverable
+          }
+        }
+      } finally {
+        this.backing = false
+        this.isProcessing = false
+        this.currentBackupGenerator = null
+        this.processingStartTime = null
+      }
+    },
+
+    // 选择恢复文件
+    selectRestoreFile() {
+      if (this.restoring) return
+      this.$refs.fileInput.click()
+    },
+
+    // 处理文件选择
+    async handleFileSelect(event) {
+      const file = event.target.files[0]
+      if (!file) return
+
+      if (!file.name.endsWith('.json')) {
+        this.$message.error(this.$t('sysStatus.selectJsonFile'))
+        return
+      }
+
+      // 确认恢复操作
+      try {
+        await this.$confirm(
+          this.$t('sysStatus.restoreConfirmMessage'),
+          this.$t('sysStatus.restoreConfirmTitle'),
+          {
+            confirmButtonText: this.$t('sysStatus.restoreConfirmOk'),
+            cancelButtonText: this.$t('sysStatus.restoreConfirmCancel'),
+            type: 'warning'
+          }
+        )
+        
+        await this.restoreData(file)
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('确认恢复失败:', error)
+        }
+      }
+      
+      // 清除文件选择
+      event.target.value = ''
+    },
+
+    // 恢复数据 - 使用前端辅助分批恢复流程
+    async restoreData(file) {
+      if (this.isProcessing) {
+        this.$message.warning(this.$t('sysStatus.operationInProgress'))
+        return
+      }
+
+      this.restoring = true
+      this.isProcessing = true
+      this.processingError = null
+      this.processingStartTime = Date.now()
+      this.processingProgress = { current: 0, total: 0, message: '', percentage: 0 }
+
+      try {
+        // 解析备份文件
+        const fileContent = await file.text()
+        let backupData
+        try {
+          backupData = JSON.parse(fileContent)
+        } catch (parseError) {
+          throw new Error(this.$t('sysStatus.invalidBackupFile'))
+        }
+
+        // 创建 RestoreProcessor 实例
+        this.currentRestoreProcessor = new RestoreProcessor({
+          chunkSize: 100, // 每批恢复 100 条
+          onProgress: (progress) => this.handleProgress(progress),
+          onError: (error) => this.handleError(error)
+        })
+
+        const result = await this.currentRestoreProcessor.restore(backupData)
+
+        // 恢复完成，重置恢复状态
+        this.restoring = false
+        this.isProcessing = false
+        this.currentRestoreProcessor = null
+        this.processingStartTime = null
+
+        // 显示恢复成功消息
+        this.$message.success(
+          this.$t('sysStatus.restoreSuccess', { files: result.restoredFiles, settings: result.restoredSettings })
+        )
+
+        // 短暂延迟后自动开始重建索引
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await this.rebuildIndex()
+      } catch (error) {
+        console.error('恢复数据失败:', error)
+        
+        // 出错时重置状态
+        this.restoring = false
+        this.isProcessing = false
+        this.currentRestoreProcessor = null
+        this.processingStartTime = null
+        
+        if (error.code !== 'ABORTED') {
+          const errorMessage = error.suggestion
+            ? `${error.message}。${error.suggestion}`
+            : error.message
+          this.$message.error(this.$t('sysStatus.restoreFailed') + ': ' + errorMessage)
+          this.processingError = {
+            message: error.message,
+            suggestion: error.suggestion,
+            recoverable: error.recoverable
+          }
+        }
+      }
+    },
+
+    // 格式化时间
+    formatTime(timestamp) {
+      if (!timestamp) return this.$t('sysStatus.unknown')
+      const date = new Date(timestamp)
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    },
+
+    // 计算百分比
+    getPercentage(value, total) {
+      if (!total || total === 0) return 0
+      return Math.round((value / total) * 100)
+    },
+
+    // 计算时间差
+    getTimeAgo(timestamp) {
+      if (!timestamp) return ''
+      const now = Date.now()
+      const diff = now - timestamp
+      const minutes = Math.floor(diff / 60000)
+      const hours = Math.floor(diff / 3600000)
+      const days = Math.floor(diff / 86400000)
+      
+      if (days > 0) return this.$t('sysStatus.daysAgo', { count: days })
+      if (hours > 0) return this.$t('sysStatus.hoursAgo', { count: hours })
+      if (minutes > 0) return this.$t('sysStatus.minutesAgo', { count: minutes })
+      return this.$t('sysStatus.justNow')
+    },
+    
+    // 图片加载失败处理
+    handleImageError(type) {
+      this.loadErrors[type] = true
+    },
+    
+    // 检查是否应该显示预览图
+    isValidPreview(type, file) {
+      if (this.loadErrors[type]) return false
+      if (!file?.metadata?.FileType) return false
+      return file.metadata.FileType.includes('image') || file.metadata.FileType.includes('video')
+    },
+    
+    // 打开发布页面
+    openReleases() {
+      window.open('https://github.com/MarSeventh/CloudFlare-ImgBed/releases', '_blank')
+    },
+    
+    // 判断是否为图片文件
+    isImageFile(file) {
+      if (!file) return false
+      // 优先通过 FileType 判断
+      if (file.metadata?.FileType?.includes('image')) return true
+      // 通过文件名后缀判断
+      const fileName = file.metadata?.FileName || file.id || ''
+      const extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
+      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'avif', 'heic', 'heif']
+      return imageExtensions.includes(extension)
+    },
+    
+    // 判断是否为视频文件
+    isVideoFile(file) {
+      if (!file) return false
+      // 优先通过 FileType 判断
+      if (file.metadata?.FileType?.includes('video')) return true
+      // 通过文件名后缀判断
+      const fileName = file.metadata?.FileName || file.id || ''
+      const extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
+      const videoExtensions = ['mp4', 'webm', 'ogg', 'avi', 'mov', 'flv', 'wmv', 'mkv', 'm4v', '3gp', 'mpeg', 'mpg']
+      return videoExtensions.includes(extension)
+    },
+    
+    // 在新窗口打开文件
+    openFileInNewTab(file) {
+      if (!file?.id) return
+      window.open('/file/' + file.id + '?from=admin', '_blank')
+    },
+    
+    // 处理进度更新
+    handleProgress(progress) {
+      this.processingPhase = progress.phase
+      this.processingProgress.message = progress.message || ''
+      this.processingProgress.current = progress.current || 0
+      
+      // 根据不同阶段计算进度百分比
+      if (progress.phase === 'fetching') {
+        // 获取阶段：基于已获取的记录数估算（假设总数未知时显示已获取数量）
+        this.processingProgress.total = progress.total || 0
+        // 获取阶段占总进度的 60%
+        if (progress.total && progress.total > 0) {
+          this.processingProgress.percentage = Math.min(60, (progress.current / progress.total) * 60)
+        } else {
+          // 未知总数时，使用对数增长模拟进度
+          this.processingProgress.percentage = Math.min(50, Math.log10(progress.current + 1) * 15)
+        }
+      } else if (progress.phase === 'sorting') {
+        // 排序阶段：占 60-70%
+        this.processingProgress.percentage = 65
+        this.processingProgress.total = progress.total || this.processingProgress.total
+      } else if (progress.phase === 'uploading') {
+        // 上传阶段：占 70-95%
+        this.processingProgress.total = progress.total || 0
+        if (progress.total && progress.total > 0) {
+          this.processingProgress.percentage = 70 + (progress.current / progress.total) * 25
+        }
+      } else if (progress.phase === 'finalizing') {
+        // 完成阶段：95-100%
+        this.processingProgress.percentage = 97
+      } else if (progress.phase === 'building') {
+        // 构建备份阶段：70-90%
+        this.processingProgress.percentage = 80
+      } else if (progress.phase === 'downloading') {
+        // 下载阶段：90-100%
+        this.processingProgress.percentage = 95
+      } else if (progress.phase === 'restoring_files') {
+        // 恢复文件阶段：0-80%
+        this.processingProgress.total = progress.total || 0
+        this.processingProgress.percentage = progress.percentage || 0
+      } else if (progress.phase === 'restoring_settings') {
+        // 恢复设置阶段：80-100%
+        this.processingProgress.total = progress.total || 0
+        this.processingProgress.percentage = progress.percentage || 80
+      } else if (progress.phase === 'completed') {
+        // 完成
+        this.processingProgress.percentage = 100
+      } else if (progress.phase === 'retrying') {
+        // 重试阶段：保持当前进度
+        this.processingProgress.message = progress.message
+      }
+    },
+    
+    // 处理错误
+    handleError(error) {
+      console.error('批量操作错误:', error)
+      this.processingError = {
+        message: error.message,
+        suggestion: error.suggestion,
+        recoverable: error.recoverable
+      }
+    },
+    
+    // 取消当前操作
+    cancelOperation() {
+      if (this.currentRebuilder) {
+        this.currentRebuilder.abort()
+        this.$message.info(this.$t('sysStatus.cancellingRebuild'))
+      }
+      if (this.currentBackupGenerator) {
+        this.currentBackupGenerator.abort()
+        this.$message.info(this.$t('sysStatus.cancellingRebuild'))
+      }
+      if (this.currentRestoreProcessor) {
+        this.currentRestoreProcessor.abort()
+        this.$message.info(this.$t('sysStatus.cancellingRebuild'))
+      }
+    },
+    
+    // 重试操作
+    retryOperation() {
+      this.processingError = null
+      if (this.rebuilding) {
+        this.rebuilding = false
+        this.isProcessing = false
+        this.$nextTick(() => {
+          this.rebuildIndex()
+        })
+      } else if (this.backing) {
+        this.backing = false
+        this.isProcessing = false
+        this.$nextTick(() => {
+          this.backupData()
+        })
+      }
+    },
+    
+    // 关闭错误提示
+    dismissError() {
+      this.processingError = null
+    }
+  }
+}
+</script>
+
+<style scoped>
+.status-panel {
+  padding: 20px;
+  background: transparent;
+  min-height: 100vh;
+}
+
+/* 动态问候与系统运行摘要 */
+.status-hero {
+  --hero-status-color: var(--el-color-success);
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 42px;
+  margin-bottom: 8px;
+  padding: 28px 12px 34px;
+  color: var(--admin-container-color);
+}
+
+.status-hero::before,
+.status-hero::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.status-hero::before {
+  inset: 0;
+  opacity: 0.34;
+  background-image:
+    radial-gradient(circle at 64% 52%, color-mix(in srgb, var(--primary-color) 9%, transparent), transparent 28%),
+    linear-gradient(color-mix(in srgb, var(--primary-color) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 16%, transparent) 1px, transparent 1px);
+  background-size: auto, 34px 34px, 34px 34px;
+  mask-image: linear-gradient(90deg, transparent 28%, #000 72%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 28%, #000 72%, transparent 100%);
+}
+
+.status-hero::after {
+  width: 150px;
+  height: 150px;
+  top: 50%;
+  right: 31%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  filter: blur(20px);
+  transform: translateY(-50%);
+}
+
+.status-hero.is-checking {
+  --hero-status-color: var(--el-color-warning);
+}
+
+.status-hero.is-attention {
+  --hero-status-color: var(--el-color-danger);
+}
+
+.status-hero-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.status-hero-kicker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 15px;
+}
+
+.system-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  color: var(--hero-status-color);
+  background: color-mix(in srgb, var(--hero-status-color) 10%, var(--glass-bg));
+  border: 1px solid color-mix(in srgb, var(--hero-status-color) 24%, var(--glass-border));
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.system-health-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.system-health-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid currentColor;
+  border-radius: inherit;
+  animation: healthPulse 2s ease-out infinite;
+}
+
+.status-hero-date {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.45;
+}
+
+.status-hero-title {
+  margin: 0;
+  color: var(--admin-container-color);
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 750;
+  line-height: 1.18;
+  letter-spacing: -0.035em;
+}
+
+.status-hero-summary {
+  max-width: 720px;
+  margin: 12px auto 0;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.status-hero-time-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 250px;
+  min-width: 250px;
+  padding: 12px 0 12px 32px;
+  border-left: 1px solid color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+  box-sizing: border-box;
+}
+
+.status-hero-time-caption {
+  color: var(--el-text-color-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.status-hero-time {
+  margin-top: 7px;
+  color: var(--admin-container-color);
+  font-size: clamp(28px, 3vw, 36px);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.status-hero-timezone {
+  margin-top: 10px;
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+  opacity: 0.78;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes healthPulse {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.75);
+  }
+  75%, 100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .system-health-dot::after {
+    animation: none;
+  }
+}
+
+/* 概览卡片 */
+.overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.overview-card {
+  background: var(--glass-bg);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  will-change: transform;
+}
+
+.overview-card:hover,
+.overview-card:focus-within {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--el-text-color-primary) 16%, transparent);
+  border-color: color-mix(in srgb, var(--primary-color) 35%, var(--glass-border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-card {
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+
+  .overview-card:hover,
+  .overview-card:focus-within {
+    transform: none;
+  }
+}
+
+.card-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-right: 20px;
+  background: var(--primary-color);
+  color: var(--el-color-white);
+}
+
+.card-content {
+  flex: 1;
+}
+
+.card-title {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--admin-container-color);
+  line-height: 1;
+}
+
+.card-subtitle {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+/* 图表区域 */
+.charts-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+  overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .charts-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-card {
+  background: var(--glass-bg);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+}
+
+.chart-card:hover {
+  box-shadow: var(--glass-shadow);
+}
+
+.chart-card,
+.chart-content,
+.pie-chart-container,
+.pie-chart-wrapper {
+  overflow: visible;
+}
+
+.chart-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 20px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--admin-container-color);
+}
+
+.trend-chart-card {
+  grid-column: 1 / -1;
+}
+
+.trend-chart-header {
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.chart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trend-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.trend-calendar-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--admin-container-color);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+.trend-calendar-btn:hover {
+  color: var(--el-color-primary);
+  border-color: var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow: none;
+}
+
+.trend-date-dialog {
+  overflow: visible;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+}
+
+.trend-date-dialog :deep(.el-dialog__body) {
+  overflow: visible;
+  padding: 16px 24px 24px;
+}
+
+.trend-date-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.trend-group-switch {
+  flex-shrink: 0;
+  height: 32px;
+  display: flex;
+}
+
+.trend-group-switch :deep(.el-radio-button__inner) {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0 14px;
+}
+
+.chart-content.trend-chart-content {
+  min-height: 320px;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.line-chart-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 320px;
+  overflow: hidden;
+}
+
+.line-chart-wrapper :deep(canvas) {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.trend-empty-state {
+  height: 320px;
+}
+
+.chart-content {
+  min-height: 160px;
+  padding: 15px;
+  margin: -5px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 160px;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.empty-state .fa-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-label {
+  min-width: 80px;
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+
+.stats-bar {
+  flex: 1;
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stats-fill {
+  height: 100%;
+  background: var(--primary-color);
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.type-fill {
+  background: #16A34A;
+}
+
+.stats-value {
+  min-width: 50px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-container-color);
+}
+
+/* 饼状图样式 */
+.pie-chart-container {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pie-chart-wrapper {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+  padding: 15px;
+  box-sizing: content-box;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.chart-center-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.center-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--admin-container-color);
+  line-height: 1.2;
+}
+
+.center-label {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--el-text-color-primary) 3%, transparent);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  will-change: transform;
+}
+
+.legend-item:hover {
+  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--glass-bg));
+  border-color: color-mix(in srgb, var(--primary-color) 30%, var(--glass-border));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--el-text-color-primary) 12%, transparent);
+}
+
+html.dark .legend-item {
+  background: color-mix(in srgb, var(--el-text-color-primary) 5%, transparent);
+}
+
+html.dark .legend-item:hover {
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--glass-bg));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legend-item {
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .legend-item:hover {
+    transform: none;
+  }
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--admin-container-color);
+  font-weight: 500;
+}
+
+.legend-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-container-color);
+  min-width: 50px;
+  text-align: right;
+}
+
+.legend-percent {
+  font-size: 12px;
+  color: #888;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* 操作区域 */
+.actions-section {
+  margin-bottom: 30px;
+}
+
+.action-card {
+  background: var(--glass-bg);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+}
+
+.action-card:hover {
+  box-shadow: var(--glass-shadow);
+}
+
+.overview-card,
+.chart-card,
+.action-card {
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.action-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--admin-container-color);
+}
+
+.action-content {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.action-btn {
+  border-radius: 10px;
+  padding: 12px 24px;
+  margin-left: 0;
+  font-weight: 500;
+  font-size: 14px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  min-width: 150px;
+  width: 150px;
+  height: 48px;
+  box-shadow: none;
+}
+
+@media (max-width: 768px) {
+  .action-btn {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    height: auto;
+  }
+}
+
+.action-btn .fa-icon {
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+/* 重建索引：描边按钮(与备份统一) */
+/* 重建索引：蓝色语义(主操作) */
+.rebuild-btn {
+  background: var(--el-fill-color-blank);
+  border-color: var(--el-border-color-lighter);
+  color: #2563EB;
+}
+
+.rebuild-btn:hover {
+  background: #EFF6FF;
+  border-color: #93C5FD;
+  color: #1D4ED8;
+}
+
+/* 备份数据：绿色语义(安全保存) */
+.backup-btn {
+  background: var(--el-fill-color-blank);
+  border-color: var(--el-border-color-lighter);
+  color: #16A34A;
+}
+
+.backup-btn:hover {
+  background: #F0FDF4;
+  border-color: #86EFAC;
+  color: #15803D;
+}
+
+/* 恢复数据：橙色语义(有风险) */
+.restore-btn {
+  background: var(--el-fill-color-blank);
+  border-color: var(--el-border-color-lighter);
+  color: #D97706;
+}
+
+.restore-btn:hover {
+  background: #FFFBEB;
+  border-color: #FCD34D;
+  color: #B45309;
+}
+
+/* 深色模式 */
+.dark .rebuild-btn {
+  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-lighter);
+  color: #60A5FA;
+}
+
+.dark .rebuild-btn:hover {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93C5FD;
+}
+
+.dark .backup-btn {
+  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-lighter);
+  color: #4ADE80;
+}
+
+.dark .backup-btn:hover {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #86EFAC;
+}
+
+.dark .restore-btn {
+  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-lighter);
+  color: #FBBF24;
+}
+
+.dark .restore-btn:hover {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #FCD34D;
+}
+
+.restore-section {
+  display: inline-block;
+}
+
+@media (max-width: 768px) {
+  .action-buttons > .el-tooltip,
+  .action-buttons > .restore-section,
+  .restore-section {
+    flex: 1;
+    width: 100%;
+  }
+  
+  .action-btn {
+    width: 100% !important;
+    padding: 10px 20px !important;
+    box-sizing: border-box;
+  }
+}
+
+/* 文件信息区域 */
+.file-info-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+.file-info-card {
+  position: relative;
+  background: var(--glass-bg);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+  transition: all 0.3s ease;
+  height: 300px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* 图片/视频占满整个卡片 */
+.card-bg-media {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+  display: block;
+}
+
+/* 确保 el-image 内部图片撑满容器 */
+.card-bg-media:deep(.el-image__inner) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.card-bg-media:deep(.el-image__wrapper) {
+  width: 100%;
+  height: 100%;
+}
+
+.card-bg-fallback {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--admin-dashborad-stats-bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fallback-icon {
+  font-size: 80px;
+  color: var(--el-text-color-placeholder);
+  opacity: 0.3;
+}
+
+/* 文件卡片标题 - 浮层在顶部 */
+.file-card-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.2) 55%, transparent 100%);
+  z-index: 2;
+}
+
+.file-card-header .fa-icon {
+  color: #60A5FA;
+}
+
+.file-card-header.warning .fa-icon {
+  color: #F59E0B;
+}
+
+/* 底部文件信息 - 浮层在底部 */
+.info-card-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.25) 50%, transparent 100%);
+  text-align: center;
+  z-index: 2;
+}
+
+.info-card-footer .file-name {
+  font-size: 14px;
+  color: white;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.info-card-footer .file-meta {
+  font-size: 12px;
+  color: #FAFAFA;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* 大屏幕上增大图片卡片高度 */
+@media (min-width: 1200px) {
+  .file-info-card {
+    height: 400px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .file-info-card {
+    height: 450px;
+  }
+}
+
+.file-info-card:hover {
+  box-shadow: var(--glass-shadow);
+}
+
+.file-info-card:hover .card-bg-media {
+  transform: scale(1);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .status-panel {
+    padding: 15px;
+  }
+
+  .status-hero {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 24px 8px 30px;
+  }
+
+  .status-hero-time-card {
+    width: 100%;
+    min-width: 0;
+    padding: 18px 0 0;
+    border-top: 1px solid color-mix(in srgb, var(--el-text-color-primary) 10%, transparent);
+    border-left: 0;
+  }
+
+  .status-hero-time {
+    font-size: 32px;
+  }
+  
+  .overview-cards {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .charts-section {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .trend-chart-header {
+    align-items: stretch;
+  }
+
+  .chart-title {
+    width: 100%;
+  }
+
+  .trend-controls {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .trend-date-dialog :deep(.el-dialog__body) {
+    padding: 12px 14px 18px;
+  }
+
+  .trend-group-switch {
+    width: 100%;
+  }
+
+  .trend-group-switch :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  .trend-group-switch :deep(.el-radio-button__inner) {
+    width: 100%;
+    padding: 0 10px;
+  }
+
+  .line-chart-wrapper,
+  .trend-empty-state {
+    height: 280px;
+  }
+  
+  .file-info-section {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .card-icon {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+    margin-right: 15px;
+  }
+  
+  .card-value {
+    font-size: 24px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .action-btn {
+    width: 100%;
+    min-width: unset;
+  }
+}
+
+@media (max-width: 480px) {
+  .status-hero {
+    padding: 21px 4px 28px;
+  }
+
+  .status-hero-title {
+    font-size: 27px;
+  }
+
+}
+
+/* 加载动画 */
+.stats-fill {
+  animation: fillAnimation 1s ease-out;
+}
+
+@keyframes fillAnimation {
+  from {
+    width: 0;
+  }
+}
+
+/* 进度显示样式 */
+.progress-container {
+  width: 100%;
+  padding: 20px;
+  text-align: center;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.progress-phase {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--admin-container-color);
+}
+
+.progress-percentage {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary-color-accent);
+}
+
+.progress-bar {
+  margin-bottom: 16px;
+}
+
+.progress-bar :deep(.el-progress-bar__outer) {
+  background-color: rgba(139, 92, 246, 0.1);
+  border-radius: 6px;
+}
+
+.progress-bar :deep(.el-progress-bar__inner) {
+  background: var(--primary-color);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.progress-details {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.progress-count,
+.progress-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #666;
+}
+
+.progress-count .fa-icon,
+.progress-time .fa-icon {
+  color: var(--primary-color-accent);
+  font-size: 12px;
+}
+
+.progress-message {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 16px;
+  min-height: 20px;
+}
+
+.cancel-btn {
+  margin-top: 12px;
+  border-radius: 10px;
+  padding: 10px 24px;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #EF4444;
+}
+
+.cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: none;
+}
+
+.cancel-btn .fa-icon {
+  margin-right: 8px;
+}
+
+/* 错误显示样式 */
+.error-container {
+  width: 100%;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.error-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #EF4444;
+  font-size: 24px;
+}
+
+.error-content {
+  text-align: center;
+}
+
+.error-message {
+  font-size: 15px;
+  font-weight: 600;
+  color: #EF4444;
+  margin-bottom: 8px;
+}
+
+.error-suggestion {
+  font-size: 13px;
+  color: #666;
+}
+
+.error-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.error-actions .el-button {
+  border-radius: 10px;
+  padding: 10px 24px;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 100px;
+}
+
+.error-actions .el-button--primary {
+  background: var(--primary-color);
+  border: none;
+  color: #fff;
+}
+
+.error-actions .el-button--primary:hover {
+  background: var(--el-color-primary-dark-2);
+  box-shadow: none;
+}
+
+.error-actions .el-button--default {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--el-text-color-regular);
+}
+
+.error-actions .el-button--default:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--glass-border-hover);
+  box-shadow: none;
+}
+
+.error-actions .fa-icon {
+  margin-right: 8px;
+}
+
+/* 暗色模式适配 */
+html.dark .progress-count,
+html.dark .progress-time {
+  color: #aaa;
+}
+
+html.dark .progress-message {
+  color: #999;
+}
+
+html.dark .error-container {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+html.dark .error-suggestion {
+  color: #aaa;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .progress-container,
+  .error-container {
+    padding: 16px;
+  }
+  
+  .progress-header {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+  
+  .progress-details {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .error-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .error-actions .el-button {
+    width: 100%;
+    margin: 0;
+  }
+}
+</style>

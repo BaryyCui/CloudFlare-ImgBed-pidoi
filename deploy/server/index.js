@@ -15,6 +15,7 @@ import { SqliteD1 } from './sqliteD1.js';
 import { LocalR2Storage } from './r2Storage.js';
 import { dockerImageProcessor } from './imageProcessor.js';
 import { createNodeImportFetcher } from './importSource.js';
+import { createRetentionService } from './retention/index.js';
 
 const NativeResponse = globalThis.Response;
 
@@ -74,7 +75,7 @@ globalThis.fetch = async function(input, init) {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, '../..');
 const FUNCTIONS_DIR = resolve(ROOT_DIR, 'functions');
-const DATA_DIR = resolve(ROOT_DIR, 'data');
+const DATA_DIR = resolve(process.env.IMGBED_DATA_DIR || resolve(ROOT_DIR, 'data'));
 const port = parseInt(process.env.PORT || '8080', 10);
 
 // 确保数据目录存在
@@ -116,6 +117,7 @@ if (existsSync(migrationsDir)) {
 
 const r2Storage = new LocalR2Storage(join(DATA_DIR, 'r2'));
 const importSourceFetch = createNodeImportFetcher();
+const retentionService = createRetentionService({ database: sqliteD1.db, storage: r2Storage, dataDir: DATA_DIR });
 
 // ==================== 创建环境对象 ====================
 
@@ -126,6 +128,7 @@ function createEnv() {
         img_r2: r2Storage,
         IMAGE_PROCESSOR: dockerImageProcessor,
         IMPORT_SOURCE_FETCH: importSourceFetch,
+        RETENTION_SERVICE: retentionService,
     };
 }
 
@@ -412,7 +415,7 @@ async function fetchWithNativeResponse(request, env, executionCtx) {
     });
 }
 
-serve({
+const server = serve({
     fetch: fetchWithNativeResponse,
     port,
 }, (info) => {
@@ -420,3 +423,15 @@ serve({
     console.log(`Data directory: ${DATA_DIR}`);
     console.log(`Mode: Docker (Native Node.js)`);
 });
+
+retentionService.start().catch(() => console.error('Retention scheduler could not start; check the cleanup status page'));
+server.on('close', () => { retentionService.close().catch(() => console.error('Retention scheduler shutdown failed')); });
+let shuttingDown = false;
+async function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    try { await retentionService.close(); }
+    finally { server.close(); }
+}
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);
