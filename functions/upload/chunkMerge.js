@@ -1,9 +1,10 @@
 /* ========== 分块合并处理 ========== */
 import { createResponse, getUploadIp, getIPAddress, selectConsistentChannel, buildUniqueFileId, endUpload, sanitizeUploadFolder } from './uploadTools';
 import { retryFailedChunks, cleanupFailedMultipartUploads, checkChunkUploadStatuses, cleanupChunkData, cleanupUploadSession } from './chunkUpload';
-import { S3Client, CompleteMultipartUploadCommand } from "@aws-sdk/client-s3";
+import { S3Client, CompleteMultipartUploadCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getDatabase } from '../utils/databaseAdapter.js';
 import { fetchPageConfig } from '../utils/sysConfig.js';
+import { compressStoredUpload } from '../utils/uploadImageCompression.js';
 
 // 处理分块合并
 export async function handleChunkMerge(context) {
@@ -293,6 +294,10 @@ async function mergeR2ChunksInfo(context, uploadId, completedChunks, metadata) {
         metadata.ChannelName = r2ChannelName;
         metadata.FileSize = (totalSize / 1024 / 1024).toFixed(2);
         metadata.FileSizeBytes = totalSize;
+        await compressStoredUpload(context, metadata, {
+            read: async () => (await R2DataBase.get(finalFileId))?.body,
+            write: (result, signal) => R2DataBase.put(finalFileId, result.data, { signal, httpMetadata: { contentType: result.contentType } }),
+        });
 
         // 清理multipart info
         await db.delete(multipartKey);
@@ -390,6 +395,18 @@ async function mergeS3ChunksInfo(context, uploadId, completedChunks, metadata) {
         metadata.ChannelName = s3Channel.name;
         metadata.FileSize = (totalSize / 1024 / 1024).toFixed(2);
         metadata.FileSizeBytes = totalSize;
+        try {
+            await compressStoredUpload(context, metadata, {
+                read: async signal => {
+                    const object = await s3Client.send(new GetObjectCommand({ Bucket: bucketName, Key: finalFileId }), { abortSignal: signal });
+                    return object.Body?.transformToWebStream ? object.Body.transformToWebStream() : new Response(object.Body).body;
+                },
+                write: (result, signal) => s3Client.send(new PutObjectCommand({
+                    Bucket: bucketName, Key: finalFileId, Body: result.data, ContentType: result.contentType,
+                    ContentLength: result.data.byteLength,
+                }), { abortSignal: signal }),
+            });
+        } finally { s3Client.destroy(); }
         metadata.S3FileKey = finalFileId;
 
         // 清理multipart info

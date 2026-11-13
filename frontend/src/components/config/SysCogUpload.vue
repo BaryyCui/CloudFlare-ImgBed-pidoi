@@ -22,6 +22,14 @@
             </div>
         </div>
 
+        <ServerImageCompression
+            :config="imageCompression"
+            :supported="imageCompressionSupported"
+            :loading="loading"
+            :load-error="uploadConfigError"
+            :save-config="saveImageCompression"
+        />
+
         <!-- 渠道卡片列表 - 按类型分组 -->
         <div v-for="channelType in filteredChannels" :key="channelType.value" class="channel-group">
             <div class="group-header">
@@ -595,11 +603,13 @@
 import fetchWithAuth from '@/utils/fetchWithAuth';
 import ChannelIcon from '@/components/icons/ChannelIcon.vue';
 import CustomSelect from './CustomSelect.vue';
+import ServerImageCompression from './ServerImageCompression.vue';
 
 export default {
 components: {
     ChannelIcon,
-    CustomSelect
+    CustomSelect,
+    ServerImageCompression
 },
 data() {
     return {
@@ -631,6 +641,10 @@ data() {
     discordSettings: { loadBalance: { enabled: false }, channels: [] },
     huggingfaceSettings: { loadBalance: { enabled: false }, channels: [] },
     webdavSettings: { loadBalance: { enabled: false }, channels: [] },
+    imageCompression: { enabled: false, thresholdMB: 5, targetMB: 4 },
+    imageCompressionSupported: false,
+    uploadConfigError: '',
+    uploadSaveQueue: Promise.resolve(),
 
     // 弹窗控制
     showAddDialog: false,
@@ -1038,26 +1052,49 @@ methods: {
             this.saveSettings();
         }).catch(() => {});
     },
-    saveSettings() {
-        // 保存设置
-        const settings = {
+    async uploadResponse(response) {
+        let data;
+        try { data = await response.json(); } catch { data = null; }
+        if (!response.ok || data?.success === false) {
+            const detail = data?.error?.message || data?.error || data?.message;
+            throw new Error(typeof detail === 'string' ? detail : this.$t('imageCompression.requestFailed', { status: response.status }));
+        }
+        if (!data || typeof data !== 'object') throw new Error(this.$t('imageCompression.invalidResponse'));
+        return data;
+    },
+    queueUploadSave(imageCompression) {
+        // Snapshot channels now; use the last successfully saved compression config when this request runs.
+        const settings = JSON.parse(JSON.stringify({
             telegram: this.telegramSettings,
             cfr2: this.cfr2Settings,
             s3: this.s3Settings,
             discord: this.discordSettings,
             huggingface: this.huggingfaceSettings,
             webdav: this.webdavSettings
-        };
-        fetchWithAuth('/api/manage/sysConfig/upload', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(settings)
-        })
-        .then(() => {
-            this.$message.success(this.$t('sysOthers.settingsSaved'));
+        }));
+        const save = this.uploadSaveQueue.catch(() => {}).then(async () => {
+            settings.imageCompression = { ...(imageCompression || this.imageCompression) };
+            await this.uploadResponse(await fetchWithAuth('/api/manage/sysConfig/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            }));
+            if (imageCompression) this.imageCompression = { ...imageCompression };
         });
+        this.uploadSaveQueue = save;
+        return save;
+    },
+    saveImageCompression(config) {
+        return this.queueUploadSave(config);
+    },
+    async saveSettings() {
+        if (this.loading || this.uploadConfigError) return;
+        try {
+            await this.queueUploadSave();
+            this.$message.success(this.$t('sysOthers.settingsSaved'));
+        } catch (error) {
+            this.$message.error(error.message);
+        }
     },
     // 获取容量统计（重新计算）
     async refreshQuota() {
@@ -1192,8 +1229,10 @@ mounted() {
     this.loading = true;
     // 获取上传设置
     fetchWithAuth('/api/manage/sysConfig/upload')
-    .then((response) => response.json())
+    .then((response) => this.uploadResponse(response))
     .then((data) => {
+        this.imageCompression = { ...this.imageCompression, ...data.imageCompression };
+        this.imageCompressionSupported = data.imageCompressionSupported === true;
         this.telegramSettings = data.telegram;
         // 确保 R2 渠道有 quota 默认值
         if (data.cfr2 && data.cfr2.channels) {
@@ -1242,6 +1281,9 @@ mounted() {
         this.webdavSettings = data.webdav || { loadBalance: {}, channels: [] };
         // 加载容量统计（仅读取，不重建索引）
         this.loadQuotaStats();
+    })
+    .catch((error) => {
+        this.uploadConfigError = error.message;
     })
     .finally(() => {
         this.loading = false;

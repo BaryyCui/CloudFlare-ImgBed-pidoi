@@ -77,6 +77,7 @@ describe('Docker request signal after real-IP header injection', function () {
             if (specifier === './sqliteD1.js') return synthetic(specifier, { SqliteD1: class {} });
             if (specifier === './r2Storage.js') return synthetic(specifier, { LocalR2Storage: class {} });
             if (specifier === './imageProcessor.js') return synthetic(specifier, { dockerImageProcessor: {} });
+            if (specifier === './uploadImageCompressor.js') return synthetic(specifier, { dockerUploadImageCompressor: {} });
             if (specifier === './importSource.js') return synthetic(specifier, { createNodeImportFetcher: () => () => {} });
             if (specifier === './retention/index.js') return synthetic(specifier, { createRetentionService: () => retention });
             throw new Error(`Unexpected fixture import: ${specifier}`);

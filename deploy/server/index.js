@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { SqliteD1 } from './sqliteD1.js';
 import { LocalR2Storage } from './r2Storage.js';
 import { dockerImageProcessor } from './imageProcessor.js';
+import { dockerUploadImageCompressor } from './uploadImageCompressor.js';
 import { createNodeImportFetcher } from './importSource.js';
 import { createRetentionService } from './retention/index.js';
 
@@ -127,6 +128,7 @@ function createEnv() {
         img_d1: sqliteD1,
         img_r2: r2Storage,
         IMAGE_PROCESSOR: dockerImageProcessor,
+        UPLOAD_IMAGE_COMPRESSOR: dockerUploadImageCompressor,
         IMPORT_SOURCE_FETCH: importSourceFetch,
         RETENTION_SERVICE: retentionService,
     };

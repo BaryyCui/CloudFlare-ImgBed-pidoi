@@ -39,9 +39,11 @@
 {"state":"completed","phase":"finalizing","attempt":1,"bytes_done":12582912,"uploaded_bytes":12582912,"bytes_total":12582912,"mediaType":"video","src":"/file/references/import-example.mp4","publicUrl":"https://cdn.example.com/file/references/import-example.mp4"}
 ```
 
-`bytes_total` 只在已知且未超限时出现；`bytes_done` 是从来源下载、已接收并计入本次大小限制的字节数，超限部分会丢弃。可选的 `uploaded_bytes` 单独表示对象存储已经确认接收的分片字节数；仅在分片上传成功后增加，重试同一分片不会重复计数。成功完成时 `uploaded_bytes` 等于 `bytes_done`。
+`bytes_total` 只在已知且未超限时出现；`bytes_done` 是从来源下载、已接收并计入本次大小限制的字节数，超限部分会丢弃。可选的 `uploaded_bytes` 单独表示对象存储已经确认接收的分片字节数；仅在分片上传成功后增加，重试同一分片不会重复计数。未压缩时，成功完成的 `uploaded_bytes` 等于 `bytes_done`；开启服务端图片压缩且压缩成功时，前者是压缩后保存大小，后者仍是来源大小。
 
-可选的 `phase` 细分当前操作：`connecting` 等待来源连接或响应头，`downloading` 读取来源正文，`creating_upload` 创建 multipart，`uploading` 上传分片，`finalizing` 完成 multipart 及必要收尾。失败事件保留失败时的 `phase`，以便区分下载和存储阶段；客户端应兼容没有这些可选字段的旧服务端。
+可选的 `phase` 细分当前操作：`connecting` 等待来源连接或响应头，`downloading` 读取来源正文，`compressing` 按管理员设置压缩图片，`creating_upload` 创建 multipart，`uploading` 上传分片，`finalizing` 完成 multipart 及必要收尾。失败事件保留失败时的 `phase`，以便区分下载和存储阶段；客户端应兼容没有这些可选字段的旧服务端。
+
+Docker 可在后台开启[服务端图片压缩](./server-image-compression.md)。符合阈值的静态图片在写入前按目标大小尽力压缩，保留图片格式；视频、音频及动图不压缩。默认关闭。幂等重放保持已完成对象，不因管理员后来修改压缩设置而重复生成；来源大小限制仍按原始字节数检查。
 
 `attempt` 是本次导入的来源请求或分片上传的最高尝试次数，不是调用方发起导入的累计次数。进度在分片前后发送，处理中每 5 秒补一条；客户端应持续读取流。
 
@@ -51,7 +53,7 @@
 
 ## 传输、安全与部署
 
-下载与上传使用固定 8 MiB 分片，无需把完整对象读入内存。R2 使用 multipart binding，S3 使用已有 AWS SDK multipart 接口；Docker 的本地 R2 适配器把分片和合并结果流式写入磁盘，再原子发布。
+常规下载与上传使用固定 8 MiB 分片，无需把完整对象读入内存。仅开启图片压缩且获得压缩槽位的静态图片会有界缓冲，源图上限为 64 MiB；超过限制恢复原始流式上传。R2 使用 multipart binding，S3 使用已有 AWS SDK multipart 接口；Docker 的本地 R2 适配器把分片和合并结果流式写入磁盘，再原子发布。
 
 - 默认大小上限 2 GiB，通过 `IMPORT_URL_MAX_BYTES` 设置正整数。省略 `purpose` 的旧调用和参考素材导入默认总耗时 5 分钟、单次无进度等待 30 秒，分别通过 `IMPORT_URL_TIMEOUT_MS`、`IMPORT_URL_IDLE_TIMEOUT_MS` 设置正整数，时间单位为毫秒。
 - `purpose: "video-result"` 默认总耗时 30 分钟、单次无进度等待 120 秒，分别通过独立的 `IMPORT_VIDEO_TIMEOUT_MS`、`IMPORT_VIDEO_IDLE_TIMEOUT_MS` 配置正整数毫秒值。这些配置只影响视频结果导入，不改变旧调用和参考素材的预算。

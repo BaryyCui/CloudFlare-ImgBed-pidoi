@@ -2,6 +2,7 @@ import { ImportError, assertPublicSourceURL, workerSourceFetch, publicImportErro
 import { IMPORT_PART_BYTES, abortable, retryTransient, createImportWriter } from './importStorage.js';
 import { getDatabase } from './databaseAdapter.js';
 import { buildUniqueFileId, endUpload, sanitizeFileName, sanitizeUploadFolder } from '../upload/uploadTools.js';
+import { prepareImageStream, applyCompressionMetadata } from './uploadImageCompression.js';
 
 const encoder = new TextEncoder();
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024;
@@ -130,7 +131,7 @@ export async function runMediaImport(context, input, selected, source, prefix, l
                 const previous = JSON.parse(saved);
                 if (previous.bytes > limits.maxBytes) throw new ImportError('size_limit', 'Source file is too large', 413);
                 bytesDone = previous.bytes;
-                uploadedBytes = previous.bytes;
+                uploadedBytes = previous.storedBytes ?? previous.bytes;
                 bytesTotal = previous.bytes;
                 actualMediaType = previous.mediaType;
                 state = 'completed';
@@ -177,6 +178,14 @@ export async function runMediaImport(context, input, selected, source, prefix, l
         }
         if (!detected) throw new ImportError('unsupported_media', 'Source is not a supported image, video or audio file', 415);
         actualMediaType = detected.mediaType;
+        const preparedImage = await prepareImageStream(context, {
+            contentType: detected.contentType, size: bytesTotal,
+            chunks: [prefixBytes, ...(pending && !pending.done ? [pending.value] : [])],
+            read: take, signal, onCompress: () => { phase = 'compressing'; progress(); },
+        });
+        // Keep source transfer accounting separate from the stored image size.
+        prefixBytes = null;
+        pending = null;
         const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/heic': 'heic', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/flac': 'flac', 'audio/ogg': 'ogg', 'audio/webm': 'webm' })[detected.contentType];
         const fileName = sanitizeFileName(input.filename || source.pathname.split('/').pop() || `media.${extension}`);
         const fullId = input.idempotencyKey ? `${folder ? `${folder}/` : ''}import-${requestIdentity}.${extension}` : await buildUniqueFileId(context, fileName, detected.contentType);
@@ -206,9 +215,9 @@ export async function runMediaImport(context, input, selected, source, prefix, l
                 if (used === part.length) await flush();
             }
         };
-        await append(prefixBytes);
-        if (pending && !pending.done) await append(pending.value);
-        while (true) {
+        for (const bytes of preparedImage.chunks) await append(bytes);
+        preparedImage.chunks.length = 0;
+        while (!preparedImage.done) {
             const chunk = await take();
             if (chunk.done) break;
             await append(chunk.value);
@@ -218,11 +227,12 @@ export async function runMediaImport(context, input, selected, source, prefix, l
         part = null;
         state = 'uploading'; phase = 'finalizing'; progress();
         const metadata = {
-            FileName: fileName, FileType: detected.contentType, FileSizeBytes: bytesDone,
-            FileSize: (bytesDone / 1024 / 1024).toFixed(2), Directory: folder ? `${folder}/` : '',
+            FileName: fileName, FileType: detected.contentType, FileSizeBytes: uploadedBytes,
+            FileSize: (uploadedBytes / 1024 / 1024).toFixed(2), Directory: folder ? `${folder}/` : '',
             Channel: selected.kind === 's3' ? 'S3' : 'CloudflareR2', ChannelName: selected.channel.name,
             ...(selected.kind === 's3' ? { S3FileKey: fullId } : {}), ImportIdentity: requestIdentity, TimeStamp: Date.now(),
         };
+        applyCompressionMetadata(metadata, preparedImage.result);
         const result = { src: `/file/${fullId}`, ...(prefix ? { publicUrl: `${prefix.replace(/\/+$/, '')}/${fullId}` } : {}) };
         await writer.complete(parts, async () => {
             // A completed object cannot be undone safely by aborting its old
@@ -235,7 +245,7 @@ export async function runMediaImport(context, input, selected, source, prefix, l
                 await abortable(() => db.put(fullId, '', { metadata }), finalization.signal, 5000);
                 const indexed = await abortable(() => endUpload(context, fullId, metadata), finalization.signal, 5000);
                 if (indexed?.success !== true) throw new ImportError('index_failed', 'Import index could not be saved', 502);
-                if (input.idempotencyKey) await abortable(() => db.put(recordKey, JSON.stringify({ result, bytes: bytesDone, mediaType: actualMediaType })), finalization.signal, 5000);
+                if (input.idempotencyKey) await abortable(() => db.put(recordKey, JSON.stringify({ result, bytes: bytesDone, storedBytes: uploadedBytes, mediaType: actualMediaType })), finalization.signal, 5000);
             } finally { clearTimeout(deadline); }
         }, context.waitUntil ? promise => context.waitUntil(promise) : undefined);
         if (signal.aborted) throw signal.reason;

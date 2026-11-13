@@ -13,6 +13,7 @@ import { HuggingFaceAPI } from "../utils/storage/huggingfaceAPI";
 import { WebDAVAPI } from "../utils/storage/webdavAPI";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getDatabase } from '../utils/databaseAdapter.js';
+import { compressUploadForm, applyCompressionMetadata } from '../utils/uploadImageCompression.js';
 
 
 export async function onRequest(context) {  // Contents of context object
@@ -130,6 +131,8 @@ async function processFileUpload(context, formdata = null) {
     // 将指定的渠道名称存入 context，供后续上传函数使用
     context.specifiedChannelName = urlParamChannelName || null;
 
+    const compressedImage = await compressUploadForm(context, formdata);
+
     // 获取文件信息
     const time = new Date().getTime();
     const file = formdata.get('file');
@@ -185,6 +188,7 @@ async function processFileUpload(context, formdata = null) {
         metadata.Width = imageDimensions.width;
         metadata.Height = imageDimensions.height;
     }
+    applyCompressionMetadata(metadata, compressedImage);
 
     const fileExt = resolveFileExt(fileName, fileType);
 

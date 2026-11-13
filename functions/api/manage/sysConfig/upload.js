@@ -1,5 +1,6 @@
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 import { normalizeWebDAVHeaders } from '../../../utils/storage/webdavAPI.js';
+import { imageCompressionConfig, validateImageCompression } from '../../../utils/uploadImageCompression.js';
 
 export async function onRequest(context) {
     // 上传设置相关，GET方法读取设置，POST方法保存设置
@@ -28,7 +29,21 @@ export async function onRequest(context) {
     // POST保存设置
     if (request.method === 'POST') {
         const body = await request.json()
-        const settings = body
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            return new Response(JSON.stringify({ error: 'Settings must be a JSON object' }), { status: 400, headers: { 'content-type': 'application/json' } });
+        }
+        const previous = JSON.parse(await db.get('manage@sysConfig@upload') || '{}');
+        const settings = { ...body };
+        delete settings.imageCompressionSupported;
+        try {
+            settings.imageCompression = Object.prototype.hasOwnProperty.call(body, 'imageCompression')
+                ? validateImageCompression(body.imageCompression) : imageCompressionConfig(previous.imageCompression);
+            if (settings.imageCompression.enabled && !env.UPLOAD_IMAGE_COMPRESSOR) {
+                throw new Error('Server image compression is supported only in the Docker runtime');
+            }
+        } catch (error) {
+            return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { 'content-type': 'application/json' } });
+        }
 
         // 写入数据库
         await db.put('manage@sysConfig@upload', JSON.stringify(settings))
@@ -322,6 +337,8 @@ export async function getUploadConfig(db, env) {
     settings.discord = discord
     settings.huggingface = huggingface
     settings.webdav = webdav
+    settings.imageCompression = imageCompressionConfig(settingsKV.imageCompression)
+    settings.imageCompressionSupported = !!env.UPLOAD_IMAGE_COMPRESSOR
 
     return settings;
 }
